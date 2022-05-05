@@ -77,6 +77,11 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH}, 1);
+            return;
+        }
+
         mBtnBluetoothOn.setOnClickListener(new Button.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -202,13 +207,14 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         try {
-            mBluetoothSocket = mBluetoothDevice.createRfcommSocketToServiceRecord(BT_UUID);
+            mBluetoothSocket = mBluetoothDevice.createInsecureRfcommSocketToServiceRecord(BT_UUID);
             mBluetoothSocket.connect();
+
             mThreadConnectedBluetooth = new ConnectedBluetoothThread(mBluetoothSocket);
             mThreadConnectedBluetooth.start();
             mBluetoothHandler.obtainMessage(BT_CONNECTING_STATUS, 1, -1).sendToTarget();
         } catch (IOException e) {
-            Toast.makeText(getApplicationContext(), "블루투스 연결 중 오류가 발생했습니다.", Toast.LENGTH_LONG).show();
+            Toast.makeText(getApplicationContext(), "블루투스 연결 중 오류가 발생했습니다." + e.toString(), Toast.LENGTH_LONG).show();
         }
     }
 
