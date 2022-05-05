@@ -7,10 +7,13 @@ import androidx.core.app.ActivityCompat;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -38,6 +41,8 @@ public class MainActivity extends AppCompatActivity {
     TextView mTvBluetoothStatus;
     TextView mTvReceiveData;
     TextView mTvSendData;
+    TextView logView;
+    TextView btRssi;
     Button mBtnBluetoothOn;
     Button mBtnBluetoothOff;
     Button mBtnConnect;
@@ -51,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     ConnectedBluetoothThread mThreadConnectedBluetooth;
     BluetoothDevice mBluetoothDevice;
     BluetoothSocket mBluetoothSocket;
+    BroadcastReceiver mReceiver;
 
     final static int BT_REQUEST_ENABLE = 1;
     final static int BT_MESSAGE_READ = 2;
@@ -64,12 +70,13 @@ public class MainActivity extends AppCompatActivity {
 
         mTvBluetoothStatus = (TextView) findViewById(R.id.tvBluetoothStatus);
         mTvReceiveData = (TextView) findViewById(R.id.tvReceiveData);
+        btRssi = (TextView) findViewById(R.id.btRssi);
         mTvSendData = (EditText) findViewById(R.id.tvSendData);
         mBtnBluetoothOn = (Button) findViewById(R.id.btnBluetoothOn);
         mBtnBluetoothOff = (Button) findViewById(R.id.btnBluetoothOff);
         mBtnConnect = (Button) findViewById(R.id.btnConnect);
         mBtnSendData = (Button) findViewById(R.id.btnSendData);
-
+        logView = (TextView) findViewById(R.id.logView);
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -80,6 +87,60 @@ public class MainActivity extends AppCompatActivity {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH}, 1);
             return;
+        }
+
+        // Register for broadcasts when a device is discovered
+        registerReceiver(receiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+
+        // Acquire a reference to the system Location Manager
+        LocationManager locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
+
+        // GPS 프로바이더 사용가능여부
+        boolean isGPSEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        // 네트워크 프로바이더 사용가능여부
+        boolean isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+
+        Log.d("Main", "isGPSEnabled=" + isGPSEnabled);
+        Log.d("Main", "isNetworkEnabled=" + isNetworkEnabled);
+
+        LocationListener locationListener = new LocationListener() {
+            public void onLocationChanged(Location location) {
+                double lat = location.getLatitude();
+                double lng = location.getLongitude();
+
+                logView.setText("latitude: " + lat + "\nlongitude: " + lng);
+            }
+
+//            public void onStatusChanged(String provider, int status, Bundle extras) {
+//                logView.setText("onStatusChanged");
+//            }
+
+            public void onProviderEnabled(String provider) {
+                logView.setText("onProviderEnabled");
+            }
+
+            public void onProviderDisabled(String provider) {
+                logView.setText("onProviderDisabled");
+            }
+        };
+
+        // Register the listener with the Location Manager to receive location updates
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+
+            logView.setText("location permission error");
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+            return;
+        }
+        locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener);
+        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
+
+        // 수동으로 위치 구하기
+        String locationProvider = LocationManager.GPS_PROVIDER;
+        Location lastKnownLocation = locationManager.getLastKnownLocation(locationProvider);
+        if (lastKnownLocation != null) {
+            double lng = lastKnownLocation.getLatitude();
+            double lat = lastKnownLocation.getLatitude();
+            Log.d("Main", "longtitude=" + lng + ", latitude=" + lat);
         }
 
         mBtnBluetoothOn.setOnClickListener(new Button.OnClickListener() {
@@ -125,13 +186,32 @@ public class MainActivity extends AppCompatActivity {
         };
     }
 
+    private final BroadcastReceiver receiver = new BroadcastReceiver(){
+        @Override
+        public void onReceive(Context context, Intent intent) {
+
+            String action = intent.getAction();
+            if(BluetoothDevice.ACTION_FOUND.equals(action)) {
+                int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI,Short.MIN_VALUE);
+                String name = intent.getStringExtra(BluetoothDevice.EXTRA_NAME);
+                TextView rssi_msg = (TextView) findViewById(R.id.tvReceiveData);
+                rssi_msg.setText(rssi_msg.getText() + name + " => " + rssi + "dBm");
+//                if (mBluetoothDevice.getName().equals(name)) {
+//
+//                    mBluetoothAdapter.cancelDiscovery();
+//                    mBluetoothAdapter.startDiscovery();
+//                }
+            }
+        }
+    };
+
     void bluetoothOn() {
         if (mBluetoothAdapter == null) {
             Toast.makeText(getApplicationContext(), "블루투스를 지원하지 않는 기기입니다.", Toast.LENGTH_LONG).show();
         } else {
             if (mBluetoothAdapter.isEnabled()) {
                 Toast.makeText(getApplicationContext(), "블루투스가 이미 활성화 되어 있습니다.", Toast.LENGTH_LONG).show();
-                mTvBluetoothStatus.setText("활성화");
+                mTvBluetoothStatus.setText("active");
             } else {
                 Toast.makeText(getApplicationContext(), "블루투스가 활성화 되어 있지 않습니다.", Toast.LENGTH_LONG).show();
                 Intent intentBluetoothEnable = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
@@ -144,7 +224,7 @@ public class MainActivity extends AppCompatActivity {
         if (mBluetoothAdapter.isEnabled()) {
             mBluetoothAdapter.disable();
             Toast.makeText(getApplicationContext(), "블루투스가 비활성화 되었습니다.", Toast.LENGTH_SHORT).show();
-            mTvBluetoothStatus.setText("비활성화");
+            mTvBluetoothStatus.setText("inactive");
         } else {
             Toast.makeText(getApplicationContext(), "블루투스가 이미 비활성화 되어 있습니다.", Toast.LENGTH_SHORT).show();
         }
@@ -156,10 +236,10 @@ public class MainActivity extends AppCompatActivity {
             case BT_REQUEST_ENABLE:
                 if (resultCode == RESULT_OK) { // 블루투스 활성화를 확인을 클릭하였다면
                     Toast.makeText(getApplicationContext(), "블루투스 활성화", Toast.LENGTH_LONG).show();
-                    mTvBluetoothStatus.setText("활성화");
+                    mTvBluetoothStatus.setText("active");
                 } else if (resultCode == RESULT_CANCELED) { // 블루투스 활성화를 취소를 클릭하였다면
                     Toast.makeText(getApplicationContext(), "취소", Toast.LENGTH_LONG).show();
-                    mTvBluetoothStatus.setText("비활성화");
+                    mTvBluetoothStatus.setText("inactive");
                 }
                 break;
         }
@@ -188,8 +268,8 @@ public class MainActivity extends AppCompatActivity {
                         connectSelectedDevice(items[item].toString());
                     }
                 });
-                AlertDialog alert = builder.create();
 
+                AlertDialog alert = builder.create();
                 alert.show();
             } else {
                 Toast.makeText(getApplicationContext(), "페어링된 장치가 없습니다.", Toast.LENGTH_LONG).show();
@@ -203,6 +283,7 @@ public class MainActivity extends AppCompatActivity {
         for (BluetoothDevice tempDevice : mPairedDevices) {
             if (selectedDeviceName.equals(tempDevice.getName())) {
                 mBluetoothDevice = tempDevice;
+                mBluetoothAdapter.startDiscovery();
                 break;
             }
         }

@@ -10,10 +10,9 @@
         android:id="@+id/btnBluetoothOn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="30dp"
-        android:layout_marginLeft="30dp"
-        android:layout_marginTop="30dp"
-        android:text="블루투스 ON"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="28dp"
+        android:text="bt on"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -22,57 +21,123 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
-        android:layout_marginLeft="8dp"
-        android:text="블루투스 OFF"
+        android:text="bt off"
         app:layout_constraintStart_toEndOf="@+id/btnBluetoothOn"
         app:layout_constraintTop_toTopOf="@+id/btnBluetoothOn" />
 
     <TextView
         android:id="@+id/tvBluetoothStatus"
-        android:layout_width="170dp"
+        android:layout_width="171dp"
         android:layout_height="20dp"
-        android:layout_marginTop="10dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
         android:text="status"
-        app:layout_constraintStart_toStartOf="@+id/btnBluetoothOn"
-        app:layout_constraintTop_toBottomOf="@+id/btnBluetoothOn" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/btRssi"
+        android:layout_width="171dp"
+        android:layout_height="20dp"
+        android:layout_marginTop="8dp"
+        android:text="rssi"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.471"
+        app:layout_constraintStart_toEndOf="@+id/tvBluetoothStatus"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <Button
         android:id="@+id/btnConnect"
         android:layout_width="wrap_content"
         android:layout_height="0dp"
-        android:layout_marginTop="10dp"
-        android:text="연결하기"
-        app:layout_constraintStart_toStartOf="@+id/tvBluetoothStatus"
-        app:layout_constraintTop_toBottomOf="@+id/tvBluetoothStatus" />
+        android:text="connect"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.735"
+        app:layout_constraintStart_toEndOf="@+id/btnBluetoothOff"
+        app:layout_constraintTop_toTopOf="@+id/btnBluetoothOff" />
 
     <TextView
         android:id="@+id/tvReceiveData"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:text="Receive"
-        app:layout_constraintStart_toStartOf="@+id/btnSendData"
-        app:layout_constraintTop_toBottomOf="@+id/btnSendData" />
+        android:layout_width="338dp"
+        android:layout_height="250dp"
+        android:layout_marginTop="8dp"
+        android:text="rx message"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.508"
+        app:layout_constraintStart_toStartOf="@+id/textView3"
+        app:layout_constraintTop_toBottomOf="@+id/textView3" />
 
     <Button
         android:id="@+id/btnSendData"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:text="전송"
-        app:layout_constraintStart_toStartOf="@+id/btnConnect"
-        app:layout_constraintTop_toBottomOf="@+id/btnConnect" />
+        android:layout_width="323dp"
+        android:layout_height="42dp"
+        android:layout_marginBottom="16dp"
+        android:text="send"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <EditText
         android:id="@+id/tvSendData"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginLeft="8dp"
+        android:layout_width="338dp"
+        android:layout_height="44dp"
+        android:layout_marginTop="8dp"
         android:ems="10"
         android:inputType="textPersonName"
         android:text="Send Data"
-        app:layout_constraintStart_toEndOf="@+id/btnSendData"
-        app:layout_constraintTop_toTopOf="@+id/btnSendData" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.508"
+        app:layout_constraintStart_toStartOf="@+id/textView5"
+        app:layout_constraintTop_toBottomOf="@+id/textView5" />
+
+    <TextView
+        android:id="@+id/textView"
+        android:layout_width="146dp"
+        android:layout_height="25dp"
+        android:layout_marginTop="8dp"
+        android:text="GPS DATA"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.06"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnBluetoothOn" />
+
+    <TextView
+        android:id="@+id/logView"
+        android:layout_width="338dp"
+        android:layout_height="44dp"
+        android:layout_marginTop="8dp"
+        android:text="gps data"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.508"
+        app:layout_constraintStart_toStartOf="@+id/textView"
+        app:layout_constraintTop_toBottomOf="@+id/textView" />
+
+    <TextView
+        android:id="@+id/textView3"
+        android:layout_width="146dp"
+        android:layout_height="25dp"
+        android:layout_marginTop="8dp"
+        android:text="Receive message"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.06"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/logView" />
+
+    <TextView
+        android:id="@+id/textView5"
+        android:layout_width="146dp"
+        android:layout_height="25dp"
+        android:layout_marginTop="8dp"
+        android:text="Receive message"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.06"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvReceiveData" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
