@@ -33,9 +33,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.lang.Integer;
 
 public class MainActivity extends AppCompatActivity {
     TextView mTvBluetoothStatus;
@@ -59,6 +61,9 @@ public class MainActivity extends AppCompatActivity {
     BluetoothSocket mBluetoothSocket;
     BroadcastReceiver mReceiver;
 
+    // message format
+    RefMessage refMessageFormat;
+
     final static int BT_REQUEST_ENABLE = 1;
     final static int BT_MESSAGE_READ = 2;
     final static int BT_CONNECTING_STATUS = 3;
@@ -79,6 +84,7 @@ public class MainActivity extends AppCompatActivity {
         mBtnSendData = (Button) findViewById(R.id.btnSendData);
         logView = (TextView) findViewById(R.id.logView);
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        refMessageFormat = new RefMessage();
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
@@ -173,12 +179,51 @@ public class MainActivity extends AppCompatActivity {
                 if (msg.what == BT_MESSAGE_READ) {
                     String readMessage = null;
                     try {
+//                        RefMessage tmpMessage = new RefMessage();
+//                        byte[] id = new byte[]{0x48, 0x59, 0x45, 0x53};
+//                        tmpMessage.id = id;
+//
+//                        byte[] type = new byte[]{0x00, 0x00, 0x00, 0x01};
+//                        tmpMessage.type = type;
+//
+//                        byte[] body_len = new byte[]{0x00, 0x00, 0x00, 0x08};
+//                        tmpMessage.body_len = body_len;
+//
+//                        byte[] latitude = new byte[]{0x35, (byte) 0xA4, (byte) 0xE9, 0x01};
+//                        tmpMessage.latitude = latitude;
+//
+//                        byte[] longitude = new byte[]{0x6b, 0x49, (byte) 0xd2, 0x01};
+//                        tmpMessage.longitude = longitude;
+//
+//                        List<Byte> msgFormat = new ArrayList(Arrays.asList(id));
+//                        msgFormat.addAll(new ArrayList(Arrays.asList(type)));
+//                        msgFormat.addAll(new ArrayList(Arrays.asList(body_len)));
+//                        msgFormat.addAll(new ArrayList(Arrays.asList(latitude)));
+//                        msgFormat.addAll(new ArrayList(Arrays.asList(longitude)));
+//
+//                        mTvReceiveData.setText(msgFormat.toString() + "\n");
+//                        msg.obj = msgFormat.toArray();
+
+                        // refMessageFormat = (RefMessage) msg.obj;
+
+                        refMessageFormat.id = Arrays.copyOfRange((byte[]) msg.obj, 0, 4);
+                        refMessageFormat.type = Arrays.copyOfRange((byte[])msg.obj, 4, 8);
+                        refMessageFormat.body_len = Arrays.copyOfRange((byte[])msg.obj, 8, 12);
+                        refMessageFormat.latitude = Arrays.copyOfRange((byte[])msg.obj, 12, 16);
+                        refMessageFormat.longitude = Arrays.copyOfRange((byte[])msg.obj, 16, 20);
+
+                        mTvReceiveData.setText("id: " + new String(refMessageFormat.id) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + new String(refMessageFormat.type) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " + new String(refMessageFormat.body_len) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + new String(refMessageFormat.latitude) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + new String(refMessageFormat.latitude) + "\n");
+
                         readMessage = new String((byte[]) msg.obj, "UTF-8");
-                    } catch (UnsupportedEncodingException e) {
-                        mTvReceiveData.setText("Exception");
+                    } catch (Exception e) {
+                        Toast.makeText(getApplicationContext(), "Fail to parse rx message - e: " + e.toString(), Toast.LENGTH_LONG).show();
                         e.printStackTrace();
                     }
-                    mTvReceiveData.setText(readMessage);
+                    // mTvReceiveData.setText(readMessage);
                 }
             }
         };
@@ -306,6 +351,22 @@ public class MainActivity extends AppCompatActivity {
         } catch (IOException e) {
             Toast.makeText(getApplicationContext(), "블루투스 연결 중 오류가 발생했습니다." + e.toString(), Toast.LENGTH_LONG).show();
         }
+    }
+
+    private class RefMessage {
+         byte[] id;
+         byte[] type;
+         byte[] body_len;
+         byte[] latitude;
+         byte[] longitude;
+
+         public RefMessage() {
+             id = new byte[4];
+             type = new byte[4];
+             body_len = new byte[4];
+             latitude = new byte[4];
+             longitude = new byte[4];
+         }
     }
     private class GetRssiThread extends Thread {
         public GetRssiThread() {
