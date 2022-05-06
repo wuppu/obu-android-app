@@ -54,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
 
     Handler mBluetoothHandler;
     ConnectedBluetoothThread mThreadConnectedBluetooth;
+    GetRssiThread mThreadGetRssi;
     BluetoothDevice mBluetoothDevice;
     BluetoothSocket mBluetoothSocket;
     BroadcastReceiver mReceiver;
@@ -88,9 +89,6 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH}, 1);
             return;
         }
-
-        // Register for broadcasts when a device is discovered
-        registerReceiver(receiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
 
         // Acquire a reference to the system Location Manager
         LocationManager locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
@@ -190,17 +188,23 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
 
-            String action = intent.getAction();
-            if(BluetoothDevice.ACTION_FOUND.equals(action)) {
-                int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI,Short.MIN_VALUE);
-                String name = intent.getStringExtra(BluetoothDevice.EXTRA_NAME);
-                TextView rssi_msg = (TextView) findViewById(R.id.tvReceiveData);
-                rssi_msg.setText(rssi_msg.getText() + name + " => " + rssi + "dBm");
-//                if (mBluetoothDevice.getName().equals(name)) {
-//
-//                    mBluetoothAdapter.cancelDiscovery();
-//                    mBluetoothAdapter.startDiscovery();
-//                }
+            try {
+                String action = intent.getAction();
+                if(BluetoothDevice.ACTION_FOUND.equals(action)) {
+                    int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI,Short.MIN_VALUE);
+                    String name = intent.getStringExtra(BluetoothDevice.EXTRA_NAME);
+                    TextView rssi_msg = (TextView) findViewById(R.id.btRssi);
+                    if (name == null) {
+                        return;
+                    }
+                    if (mBluetoothDevice.getName().equals(name)) {
+                        rssi_msg.setText(name + ": " + rssi + "dBm");
+                        mBluetoothAdapter.cancelDiscovery();
+                    }
+                }
+            }
+            catch (Exception e) {
+                Toast.makeText(getApplicationContext(), "Fail to get rssi - e: " + e.toString(), Toast.LENGTH_LONG).show();
             }
         }
     };
@@ -283,7 +287,6 @@ public class MainActivity extends AppCompatActivity {
         for (BluetoothDevice tempDevice : mPairedDevices) {
             if (selectedDeviceName.equals(tempDevice.getName())) {
                 mBluetoothDevice = tempDevice;
-                mBluetoothAdapter.startDiscovery();
                 break;
             }
         }
@@ -293,11 +296,32 @@ public class MainActivity extends AppCompatActivity {
 
             mThreadConnectedBluetooth = new ConnectedBluetoothThread(mBluetoothSocket);
             mThreadConnectedBluetooth.start();
+
+            if (mThreadGetRssi == null) {
+                mThreadGetRssi = new GetRssiThread();
+                mThreadGetRssi.start();
+            }
             mBluetoothHandler.obtainMessage(BT_CONNECTING_STATUS, 1, -1).sendToTarget();
+
         } catch (IOException e) {
             Toast.makeText(getApplicationContext(), "블루투스 연결 중 오류가 발생했습니다." + e.toString(), Toast.LENGTH_LONG).show();
         }
     }
+    private class GetRssiThread extends Thread {
+        public GetRssiThread() {
+            // Register for broadcasts when a device is discovered
+            registerReceiver(receiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+            mBluetoothAdapter.startDiscovery();
+        }
+        public void run() {
+            while (true) {
+                if (mBluetoothAdapter.isDiscovering() == false) {
+                    mBluetoothAdapter.startDiscovery();
+                }
+            }
+        }
+    }
+
 
     private class ConnectedBluetoothThread extends Thread {
         private final BluetoothSocket mmSocket;
@@ -354,186 +378,3 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
-
-//package com.example.obu_sample_java;
-//
-//        import androidx.appcompat.app.AppCompatActivity;
-//        import androidx.core.app.ActivityCompat;
-//
-//        import android.Manifest;
-//        import android.bluetooth.BluetoothSocket;
-//        import android.content.Context;
-//        import android.content.pm.PackageManager;
-//        import android.location.Location;
-//        import android.location.LocationListener;
-//        import android.location.LocationManager;
-//        import android.os.Bundle;
-//        import android.os.Handler;
-//        import android.os.SystemClock;
-//        import android.util.Log;
-//        import android.view.View;
-//        import android.widget.Button;
-//        import android.widget.TextView;
-//        import android.widget.Toast;
-//
-//        import java.io.IOException;
-//        import java.io.InputStream;
-//        import java.io.OutputStream;
-//        import java.io.UnsupportedEncodingException;
-//
-//public class MainActivity extends AppCompatActivity {
-//
-//    private static final int PERMISSIONS_REQUEST = 0x0000001;
-//    private Handler mBluetoothHandler;
-//
-//    final static int BT_REQUEST_ENABLE = 1;
-//    final static int BT_MESSAGE_READ = 2;
-//    final static int BT_CONNECTING_STATUS = 3;
-//
-//    ConnectedBluetoothThread mThreadConnectedBluetooth;
-//
-//    @Override
-//    protected void onCreate(Bundle savedInstanceState) {
-//        super.onCreate(savedInstanceState);
-//        setContentView(R.layout.activity_main);
-//
-//        Log.d("Main", "onCreate");
-//
-//
-//
-//        TextView logView = (TextView) findViewById(R.id.logGpsData);
-//        TextView logRx = (TextView) findViewById(R.id.logRxMsg);
-//        TextView logTx = (TextView) findViewById(R.id.logTxMsg);
-//        Button btnSend = (Button) findViewById(R.id.btnSend);
-//        logView.setText("GPS 가 잡혀야 좌표가 구해짐");
-//
-//        btnSend.setOnClickListener(new Button.OnClickListener() {
-//            @Override
-//            public void onClick(View view) {
-//                if(mThreadConnectedBluetooth != null) {
-//                    mThreadConnectedBluetooth.write(logTx.getText().toString());
-//                    logTx.setText("");
-//                }
-//            }
-//        });
-//        mBluetoothHandler = new Handler(){
-//            public void handleMessage(android.os.Message msg){
-//                if(msg.what == BT_MESSAGE_READ){
-//                    String readMessage = null;
-//                    try {
-//                        readMessage = new String((byte[]) msg.obj, "UTF-8");
-//                    } catch (UnsupportedEncodingException e) {
-//                        e.printStackTrace();
-//                    }
-//                    logRx.setText(readMessage);
-//                }
-//            }
-//        };
-//
-//        // Acquire a reference to the system Location Manager
-//        LocationManager locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
-//
-//        // GPS 프로바이더 사용가능여부
-//        boolean isGPSEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
-//        // 네트워크 프로바이더 사용가능여부
-//        boolean isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
-//
-//        Log.d("Main", "isGPSEnabled=" + isGPSEnabled);
-//        Log.d("Main", "isNetworkEnabled=" + isNetworkEnabled);
-//
-//        LocationListener locationListener = new LocationListener() {
-//            public void onLocationChanged(Location location) {
-//                double lat = location.getLatitude();
-//                double lng = location.getLongitude();
-//
-//                logView.setText("latitude: " + lat + "\nlongitude: " + lng);
-//            }
-//
-//            public void onStatusChanged(String provider, int status, Bundle extras) {
-//                logView.setText("onStatusChanged");
-//            }
-//
-//            public void onProviderEnabled(String provider) {
-//                logView.setText("onProviderEnabled");
-//            }
-//
-//            public void onProviderDisabled(String provider) {
-//                logView.setText("onProviderDisabled");
-//            }
-//        };
-//
-//        // Register the listener with the Location Manager to receive location updates
-//        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-//
-//            logView.setText("location permission error");
-//            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, PERMISSIONS_REQUEST);
-//            return;
-//        }
-//        locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener);
-//        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
-//
-//        // 수동으로 위치 구하기
-//        String locationProvider = LocationManager.GPS_PROVIDER;
-//        Location lastKnownLocation = locationManager.getLastKnownLocation(locationProvider);
-//        if (lastKnownLocation != null) {
-//            double lng = lastKnownLocation.getLatitude();
-//            double lat = lastKnownLocation.getLatitude();
-//            Log.d("Main", "longtitude=" + lng + ", latitude=" + lat);
-//        }
-//    }
-//
-//    private class ConnectedBluetoothThread extends Thread {
-//        private final BluetoothSocket mmSocket;
-//        private final InputStream mmInStream;
-//        private final OutputStream mmOutStream;
-//
-//        public ConnectedBluetoothThread(BluetoothSocket socket) {
-//            mmSocket = socket;
-//            InputStream tmpIn = null;
-//            OutputStream tmpOut = null;
-//
-//            try {
-//                tmpIn = socket.getInputStream();
-//                tmpOut = socket.getOutputStream();
-//            } catch (IOException e) {
-//                Toast.makeText(getApplicationContext(), "소켓 연결 중 오류가 발생했습니다.", Toast.LENGTH_LONG).show();
-//            }
-//
-//            mmInStream = tmpIn;
-//            mmOutStream = tmpOut;
-//        }
-//        public void run() {
-//            byte[] buffer = new byte[1024];
-//            int bytes;
-//
-//            while (true) {
-//                try {
-//                    bytes = mmInStream.available();
-//                    if (bytes != 0) {
-//                        SystemClock.sleep(100);
-//                        bytes = mmInStream.available();
-//                        bytes = mmInStream.read(buffer, 0, bytes);
-//                        mBluetoothHandler.obtainMessage(BT_MESSAGE_READ, bytes, -1, buffer).sendToTarget();
-//                    }
-//                } catch (IOException e) {
-//                    break;
-//                }
-//            }
-//        }
-//        public void write(String str) {
-//            byte[] bytes = str.getBytes();
-//            try {
-//                mmOutStream.write(bytes);
-//            } catch (IOException e) {
-//                Toast.makeText(getApplicationContext(), "데이터 전송 중 오류가 발생했습니다.", Toast.LENGTH_LONG).show();
-//            }
-//        }
-//        public void cancel() {
-//            try {
-//                mmSocket.close();
-//            } catch (IOException e) {
-//                Toast.makeText(getApplicationContext(), "소켓 해제 중 오류가 발생했습니다.", Toast.LENGTH_LONG).show();
-//            }
-//        }
-//    }
-//}
