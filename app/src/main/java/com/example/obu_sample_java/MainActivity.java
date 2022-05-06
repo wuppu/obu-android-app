@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -176,7 +177,11 @@ public class MainActivity extends AppCompatActivity {
         });
         mBluetoothHandler = new Handler() {
             public void handleMessage(android.os.Message msg) {
+                Toast.makeText(getApplicationContext(), "handleMessage", Toast.LENGTH_LONG).show();
+
                 if (msg.what == BT_MESSAGE_READ) {
+                    Toast.makeText(getApplicationContext(), "BT_MESSAGE_READ", Toast.LENGTH_LONG).show();
+
                     String readMessage = null;
                     try {
 //                        RefMessage tmpMessage = new RefMessage();
@@ -205,18 +210,32 @@ public class MainActivity extends AppCompatActivity {
 //                        msg.obj = msgFormat.toArray();
 
                         // refMessageFormat = (RefMessage) msg.obj;
-
                         refMessageFormat.id = Arrays.copyOfRange((byte[]) msg.obj, 0, 4);
-                        refMessageFormat.type = Arrays.copyOfRange((byte[])msg.obj, 4, 8);
-                        refMessageFormat.body_len = Arrays.copyOfRange((byte[])msg.obj, 8, 12);
-                        refMessageFormat.latitude = Arrays.copyOfRange((byte[])msg.obj, 12, 16);
-                        refMessageFormat.longitude = Arrays.copyOfRange((byte[])msg.obj, 16, 20);
+                        for (int i = 0; i < 4; i++) refMessageFormat.id[i] = (byte) (refMessageFormat.id[i] & 0xff);
 
-                        mTvReceiveData.setText("id: " + new String(refMessageFormat.id) + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + new String(refMessageFormat.type) + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " + new String(refMessageFormat.body_len) + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + new String(refMessageFormat.latitude) + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + new String(refMessageFormat.latitude) + "\n");
+                        refMessageFormat.type = Arrays.copyOfRange((byte[])msg.obj, 4, 8);
+                        for (int i = 0; i < 4; i++) refMessageFormat.type[i] = (byte) (refMessageFormat.type[i] & 0xff);
+
+                        refMessageFormat.body_len = Arrays.copyOfRange((byte[])msg.obj, 8, 12);
+                        for (int i = 0; i < 4; i++) refMessageFormat.body_len[i] = (byte) (refMessageFormat.body_len[i] & 0xff);
+
+                        refMessageFormat.latitude = Arrays.copyOfRange((byte[])msg.obj, 12, 16);
+                        for (int i = 0; i < 4; i++) refMessageFormat.latitude[i] = (byte) (refMessageFormat.latitude[i] & 0xff);
+
+                        refMessageFormat.longitude = Arrays.copyOfRange((byte[])msg.obj, 16, 20);
+                        for (int i = 0; i < 4; i++) refMessageFormat.longitude[i] = (byte) (refMessageFormat.longitude[i] & 0xff);
+
+                        mTvReceiveData.setText("id: " + refMessageFormat.id[0] + " " + refMessageFormat.id[1] + " " + refMessageFormat.id[2] + " " + refMessageFormat.id[3] + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + refMessageFormat.type[0] + " " + refMessageFormat.type[1] + " " + refMessageFormat.type[2] + " " + refMessageFormat.type[3] + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " +  refMessageFormat.body_len[0] + " " + refMessageFormat.body_len[1] + " " + refMessageFormat.body_len[2] + " " + refMessageFormat.body_len[3] + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " +  refMessageFormat.latitude[0] + " " + (refMessageFormat.latitude[1] & 0xff) + " " + refMessageFormat.latitude[2] + " " + refMessageFormat.latitude[3] + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " +  refMessageFormat.longitude[0] + " " + refMessageFormat.longitude[1] + " " + refMessageFormat.longitude[2] + " " + refMessageFormat.longitude[3] + "\n");
+
+//                        mTvReceiveData.setText("id: " + new String(refMessageFormat.id) + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.type).getInt())) + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.type).getInt())) + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.latitude).getInt())) + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.longitude).getInt())) + "\n");
 
                         readMessage = new String((byte[]) msg.obj, "UTF-8");
                     } catch (Exception e) {
