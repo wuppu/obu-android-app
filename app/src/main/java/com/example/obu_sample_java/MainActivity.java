@@ -33,6 +33,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
+import java.sql.Ref;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -64,11 +67,19 @@ public class MainActivity extends AppCompatActivity {
 
     // message format
     RefMessage refMessageFormat;
+    RefMessage alertMessageFormat;
+
 
     final static int BT_REQUEST_ENABLE = 1;
     final static int BT_MESSAGE_READ = 2;
     final static int BT_CONNECTING_STATUS = 3;
     final static UUID BT_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+
+    final static int UNAVAILABLE_LATITUDE = 900000001;
+    final static int UNAVAILABLE_LONGITUDE = 1800000001;
+
+    int currentLatitude = UNAVAILABLE_LATITUDE;
+    int currentLongitude = UNAVAILABLE_LONGITUDE;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,7 +89,7 @@ public class MainActivity extends AppCompatActivity {
         mTvBluetoothStatus = (TextView) findViewById(R.id.tvBluetoothStatus);
         mTvReceiveData = (TextView) findViewById(R.id.tvReceiveData);
         btRssi = (TextView) findViewById(R.id.btRssi);
-        mTvSendData = (EditText) findViewById(R.id.tvSendData);
+        mTvSendData = (TextView) findViewById(R.id.tvSendData);
         mBtnBluetoothOn = (Button) findViewById(R.id.btnBluetoothOn);
         mBtnBluetoothOff = (Button) findViewById(R.id.btnBluetoothOff);
         mBtnConnect = (Button) findViewById(R.id.btnConnect);
@@ -113,6 +124,9 @@ public class MainActivity extends AppCompatActivity {
                 double lat = location.getLatitude();
                 double lng = location.getLongitude();
 
+                currentLatitude = (int) (lat * 10000000);
+                currentLongitude = (int) (lng * 10000000);
+
                 logView.setText("latitude: " + lat + "\nlongitude: " + lng);
             }
 
@@ -126,6 +140,8 @@ public class MainActivity extends AppCompatActivity {
 
             public void onProviderDisabled(String provider) {
                 logView.setText("onProviderDisabled");
+                currentLatitude = UNAVAILABLE_LATITUDE;
+                currentLongitude = UNAVAILABLE_LONGITUDE;
             }
         };
 
@@ -145,7 +161,7 @@ public class MainActivity extends AppCompatActivity {
         if (lastKnownLocation != null) {
             double lng = lastKnownLocation.getLatitude();
             double lat = lastKnownLocation.getLatitude();
-            Log.d("Main", "longtitude=" + lng + ", latitude=" + lat);
+            Log.d("Main", "longitude=" + lng + ", latitude=" + lat);
         }
 
         mBtnBluetoothOn.setOnClickListener(new Button.OnClickListener() {
@@ -170,8 +186,39 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
                 if (mThreadConnectedBluetooth != null) {
-                    mThreadConnectedBluetooth.write(mTvSendData.getText().toString());
-                    mTvSendData.setText("");
+
+                    // alert message 생성
+                    alertMessageFormat = new RefMessage();
+                    alertMessageFormat.id = new String("HYES").getBytes();
+                    alertMessageFormat.type = ConvertIntToByteArray(2);
+                    alertMessageFormat.body_len = ConvertIntToByteArray(8);
+                    alertMessageFormat.latitude = ConvertIntToByteArray(currentLatitude);
+                    alertMessageFormat.longitude = ConvertIntToByteArray(currentLongitude);
+
+                    Byte[] tempByte = new Byte[4];
+                    for (int i = 0; i < 4; i++) tempByte[i] = alertMessageFormat.id[i];
+                    List<Byte> msgFormat = new ArrayList<Byte>(Arrays.asList(tempByte));
+                    for (int i = 0; i < 4; i++) tempByte[i] = alertMessageFormat.type[i];
+                    msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+                    for (int i = 0; i < 4; i++) tempByte[i] = alertMessageFormat.body_len[i];
+                    msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+                    for (int i = 0; i < 4; i++) tempByte[i] = alertMessageFormat.latitude[i];
+                    msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+                    for (int i = 0; i < 4; i++) tempByte[i] = alertMessageFormat.longitude[i];
+                    msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+
+                    for (int i = 0; i < 4; i++) alertMessageFormat.id[i] = (byte) (alertMessageFormat.id[i] & 0xff);
+                    for (int i = 0; i < 4; i++) alertMessageFormat.type[i] = (byte) (alertMessageFormat.type[i] & 0xff);
+                    for (int i = 0; i < 4; i++) alertMessageFormat.body_len[i] = (byte) (alertMessageFormat.body_len[i] & 0xff);
+                    for (int i = 0; i < 4; i++) alertMessageFormat.latitude[i] = (byte) (alertMessageFormat.latitude[i] & 0xff);
+                    for (int i = 0; i < 4; i++) alertMessageFormat.longitude[i] = (byte) (alertMessageFormat.longitude[i] & 0xff);
+                    mTvSendData.setText("id: " + new String(refMessageFormat.id) + "\n");
+                    mTvSendData.setText(mTvSendData.getText() + "type: " + ConvertByteArrayToInt(alertMessageFormat.type) + "\n");
+                    mTvSendData.setText(mTvSendData.getText() + "body_len: " + ConvertByteArrayToInt(alertMessageFormat.body_len) + "\n");
+                    mTvSendData.setText(mTvSendData.getText() + "latitude: " + ConvertByteArrayToInt(alertMessageFormat.latitude) + "\n");
+                    mTvSendData.setText(mTvSendData.getText() + "longitude: " + ConvertByteArrayToInt(alertMessageFormat.longitude) + "\n");
+
+                    mThreadConnectedBluetooth.write(msgFormat);
                 }
             }
         });
@@ -225,17 +272,17 @@ public class MainActivity extends AppCompatActivity {
                         refMessageFormat.longitude = Arrays.copyOfRange((byte[])msg.obj, 16, 20);
                         for (int i = 0; i < 4; i++) refMessageFormat.longitude[i] = (byte) (refMessageFormat.longitude[i] & 0xff);
 
-                        mTvReceiveData.setText("id: " + refMessageFormat.id[0] + " " + refMessageFormat.id[1] + " " + refMessageFormat.id[2] + " " + refMessageFormat.id[3] + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + refMessageFormat.type[0] + " " + refMessageFormat.type[1] + " " + refMessageFormat.type[2] + " " + refMessageFormat.type[3] + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " +  refMessageFormat.body_len[0] + " " + refMessageFormat.body_len[1] + " " + refMessageFormat.body_len[2] + " " + refMessageFormat.body_len[3] + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " +  refMessageFormat.latitude[0] + " " + (refMessageFormat.latitude[1] & 0xff) + " " + refMessageFormat.latitude[2] + " " + refMessageFormat.latitude[3] + "\n");
-                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " +  refMessageFormat.longitude[0] + " " + refMessageFormat.longitude[1] + " " + refMessageFormat.longitude[2] + " " + refMessageFormat.longitude[3] + "\n");
+//                        mTvReceiveData.setText("id: " + refMessageFormat.id[0] + " " + refMessageFormat.id[1] + " " + refMessageFormat.id[2] + " " + refMessageFormat.id[3] + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + refMessageFormat.type[0] + " " + refMessageFormat.type[1] + " " + refMessageFormat.type[2] + " " + refMessageFormat.type[3] + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " +  refMessageFormat.body_len[0] + " " + refMessageFormat.body_len[1] + " " + refMessageFormat.body_len[2] + " " + refMessageFormat.body_len[3] + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " +  refMessageFormat.latitude[0] + " " + (refMessageFormat.latitude[1] & 0xff) + " " + refMessageFormat.latitude[2] + " " + refMessageFormat.latitude[3] + "\n");
+//                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " +  refMessageFormat.longitude[0] + " " + refMessageFormat.longitude[1] + " " + refMessageFormat.longitude[2] + " " + refMessageFormat.longitude[3] + "\n");
 
-//                        mTvReceiveData.setText("id: " + new String(refMessageFormat.id) + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.type).getInt())) + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.type).getInt())) + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.latitude).getInt())) + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + new String(String.valueOf(ByteBuffer.wrap(refMessageFormat.longitude).getInt())) + "\n");
+                        mTvReceiveData.setText("id: " + new String(refMessageFormat.id) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + ConvertByteArrayToInt(refMessageFormat.type) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " + ConvertByteArrayToInt(refMessageFormat.body_len) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + ConvertByteArrayToInt(refMessageFormat.latitude) + "\n");
+                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + ConvertByteArrayToInt(refMessageFormat.longitude) + "\n");
 
                         readMessage = new String((byte[]) msg.obj, "UTF-8");
                     } catch (Exception e) {
@@ -246,6 +293,32 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         };
+    }
+
+    private static byte[] ConvertIntToByteArray(final int integer) {
+        ByteBuffer buff = ByteBuffer.allocate(Integer.SIZE / 8);
+        buff.clear();
+        buff.order(ByteOrder.LITTLE_ENDIAN);
+        buff.putInt(integer);
+        return buff.array();
+    }
+
+    private static int ConvertByteArrayToInt(byte[] bytes) {
+        final int size = Integer.SIZE / 8;
+        ByteBuffer buff = ByteBuffer.allocate(size);
+        final byte[] newBytes = new byte[size];
+
+        for (int i = 0; i < size; i++) {
+            if (i + bytes.length < size) {
+                newBytes[i] = (byte)0x00;
+            }
+            else {
+                newBytes[i] = bytes[i + bytes.length - size];
+            }
+        }
+        buff = ByteBuffer.wrap(newBytes);
+        buff.order(ByteOrder.LITTLE_ENDIAN);
+        return buff.getInt();
     }
 
     private final BroadcastReceiver receiver = new BroadcastReceiver(){
@@ -441,10 +514,12 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-        public void write(String str) {
-            byte[] bytes = str.getBytes();
+        public void write(List<Byte> str) {
+            Byte[] bytes = str.toArray(new Byte[str.size()]);
+            byte[] sendBytes = new byte[bytes.length];
+            for (int i = 0; i < bytes.length; i++) sendBytes[i] = bytes[i];
             try {
-                mmOutStream.write(bytes);
+                mmOutStream.write(sendBytes);
             } catch (IOException e) {
                 Toast.makeText(getApplicationContext(), "데이터 전송 중 오류가 발생했습니다.", Toast.LENGTH_LONG).show();
             }
