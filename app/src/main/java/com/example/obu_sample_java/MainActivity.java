@@ -224,10 +224,8 @@ public class MainActivity extends AppCompatActivity {
         });
         mBluetoothHandler = new Handler() {
             public void handleMessage(android.os.Message msg) {
-                Toast.makeText(getApplicationContext(), "handleMessage", Toast.LENGTH_LONG).show();
 
                 if (msg.what == BT_MESSAGE_READ) {
-                    Toast.makeText(getApplicationContext(), "BT_MESSAGE_READ", Toast.LENGTH_LONG).show();
 
                     String readMessage = null;
                     try {
