@@ -15,6 +15,10 @@
 #define UNAVAILABLE_LATITUDE 900000001
 #define UNAVAILABLE_LONGITUDE 1800000001
 #define DEFAULT_TX_INTERVAL 100
+#define REF_MESSAGE_LEN 20
+#define ALERT_MESSAEG_LEN 20
+#define NOTI_MESSAGE_LEN 24
+
 #define STR_FAIL            "\x1b[1;31mFAIL\x1b[0m"
 #define STR_ERRO            "\x1b[1;31mERRO\x1b[0m"
 #define STR_OK              "\x1b[1;32m OK \x1b[0m"
@@ -35,7 +39,9 @@ struct MIB
   char device_name[STR_MAX_SIZE];
 };
 
-// Message format
+/**
+ * @brief 참조 좌표 설정 메시지
+ * */
 struct RefMessage
 {
   int8_t id[4];
@@ -44,6 +50,45 @@ struct RefMessage
   int32_t latitude;
   int32_t longitude;
 } __attribute__((__packed__));
+
+
+/**
+ * @brief 경고 메시지
+ * */
+struct AlertMessage
+{
+  int8_t id[4];
+  uint32_t type;
+  uint32_t body_len;
+  int32_t latitude;
+  int32_t longitude;
+} __attribute__((__packed__));
+
+
+/**
+ * @brief 알림 메시지
+ * */
+struct NotiMessage
+{
+  int8_t id[4];
+  uint32_t type;
+  uint32_t body_len;
+  int32_t latitude;
+  int32_t longitude;
+  int32_t rssi;
+} __attribute__((__packed__));
+
+
+/**
+ * @brief 메시지 유형
+ * */
+enum eMessageType
+{
+  kMessageType_Ref = 1,
+  kMessageType_Alert,
+  kMessageType_Noti,
+};
+typedef int MessageType;
 
 /* 전역 변수 */
 int fd;
@@ -183,28 +228,36 @@ void *ProcessingTxMessage(void *data) {
 
   while (true) {
     // Create send message
-    struct RefMessage temp;
-    temp.id[0] = 'H';
-    temp.id[1] = 'Y';
-    temp.id[2] = 'E';
-    temp.id[3] = 'S';
-    temp.type = 1;
-    temp.body_len = 8;
-    temp.latitude = g_mib.ref_latitude;
-    temp.longitude = g_mib.ref_longitude;
+    struct RefMessage ref;
+    ref.id[0] = 'H';
+    ref.id[1] = 'Y';
+    ref.id[2] = 'E';
+    ref.id[3] = 'S';
+    ref.type = 1;
+    ref.body_len = 8;
+    ref.latitude = g_mib.ref_latitude;
+    ref.longitude = g_mib.ref_longitude;
 
     // transmit send message
-    int send_len = write(fd, &temp, sizeof(struct RefMessage));
+    int send_len = write(fd, &ref, sizeof(struct RefMessage));
     if (send_len < 0) {
       printf("[%s] Fail to send the message - ret: %d\n", STR_FAIL, send_len);
       continue;
     }
     else {
-      printf("[%s] Success to send the message - send_len: %d\n", STR_SEND, send_len);
+      printf("[%s] Success to send the Ref message - send_len: %d\n", STR_SEND, send_len);
+      printf("[%s] RefMessage: \n", STR_DEBUG);
+      printf("  id: ");
+      for (unsigned int i = 0; i < sizeof(ref.id); i++) printf("%02X ", ref.id[i]);
+      printf("("); for (unsigned int i = 0; i < sizeof(ref.id); i++) printf("%c", ref.id[i]); printf(")\n");
+      printf("  type: %d (%s)\n", ref.type, ref.type == kMessageType_Ref ? "Ref" : "NULL");
+      printf("  body_len: %u\n", ref.body_len);
+      printf("  latitude: %d\n", ref.latitude);
+      printf("  longitude: %d\n", ref.longitude);
     }
 
     // Print send message dump
-    unsigned char *ptr = (unsigned char *)&temp;
+    unsigned char *ptr = (unsigned char *)&ref;
     printf("[%s] send_len: %zu\n", STR_DEBUG, sizeof(struct RefMessage));
     printf("[%s] send: \n", STR_DEBUG);
     for (int i = 0; i < sizeof(struct RefMessage); i++) {
@@ -230,6 +283,9 @@ void *ProcessingTxMessage(void *data) {
 void *ProcessingRxMessage(void *data) {
   (void *)data;
 
+  struct AlertMessage *alert = NULL;
+  struct NotiMessage *noti = NULL;
+
   // rx message buffer
   unsigned char buf[1000];
   
@@ -248,7 +304,32 @@ void *ProcessingRxMessage(void *data) {
       continue;
     }
     else {
-      printf("[%s] Success to read the message - recv_len: %d\n", STR_RECV, recv_len);
+      noti = (struct NotiMessage *)buf;
+      
+      if (noti->type == kMessageType_Alert) {
+        printf("[%s] Success to read the Alert message - recv_len: %d\n", STR_RECV, recv_len);
+        alert = (struct AlertMessage *)buf;
+        printf("[%s] AlertMessage: \n", STR_DEBUG);
+        printf("  id: ");
+        for (unsigned int i = 0; i < sizeof(alert->id); i++) printf("%02X ", alert->id[i]);
+        printf("("); for (unsigned int i = 0; i < sizeof(alert->id); i++) printf("%c", alert->id[i]); printf(")\n");
+        printf("  type: %d (%s)\n", alert->type, alert->type == kMessageType_Alert ? "Alert" : "NULL");
+        printf("  body_len: %u\n", alert->body_len);
+        printf("  latitude: %d\n", alert->latitude);
+        printf("  longitude: %d\n", alert->longitude);
+      }
+      else if (noti->type == kMessageType_Noti) {
+        printf("[%s] Success to read the Noti message - recv_len: %d\n", STR_RECV, recv_len);
+        printf("[%s] NotiMessage: \n", STR_DEBUG);
+        printf("  id: ");
+        for (unsigned int i = 0; i < sizeof(noti->id); i++) printf("%02X ", noti->id[i]);
+        printf("("); for (unsigned int i = 0; i < sizeof(noti->id); i++) printf("%c", noti->id[i]); printf(")\n");
+        printf("  type: %d (%s)\n", noti->type, noti->type == kMessageType_Noti ? "Noti" : "NULL");
+        printf("  body_len: %u\n", noti->body_len);
+        printf("  latitude: %d\n", noti->latitude);
+        printf("  longitude: %d\n", noti->longitude);
+        printf("  rssi: %d\n", noti->rssi);
+      }
     }
 
     // Print received message dump
@@ -263,7 +344,7 @@ void *ProcessingRxMessage(void *data) {
       printf("%02X ", buf[i]);
     }
     printf("\n");
-  }
+  }    
 }
 
 
