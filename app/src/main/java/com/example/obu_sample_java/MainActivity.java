@@ -61,14 +61,14 @@ public class MainActivity extends AppCompatActivity {
     Handler mBluetoothHandler;
     ConnectedBluetoothThread mThreadConnectedBluetooth;
     GetRssiThread mThreadGetRssi;
+    SendNotiMessageThread mThreadSendNoti;
     BluetoothDevice mBluetoothDevice;
     BluetoothSocket mBluetoothSocket;
-    BroadcastReceiver mReceiver;
 
     // message format
     RefMessage refMessageFormat;
     RefMessage alertMessageFormat;
-
+    NotiMessage notiMessageFormat;
 
     final static int BT_REQUEST_ENABLE = 1;
     final static int BT_MESSAGE_READ = 2;
@@ -77,9 +77,11 @@ public class MainActivity extends AppCompatActivity {
 
     final static int UNAVAILABLE_LATITUDE = 900000001;
     final static int UNAVAILABLE_LONGITUDE = 1800000001;
+    final static int UNAVAILABLE_RSSI = -255;
 
     int currentLatitude = UNAVAILABLE_LATITUDE;
     int currentLongitude = UNAVAILABLE_LONGITUDE;
+    int currentRssi = UNAVAILABLE_RSSI;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -97,15 +99,15 @@ public class MainActivity extends AppCompatActivity {
         logView = (TextView) findViewById(R.id.logView);
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         refMessageFormat = new RefMessage();
+        alertMessageFormat = new RefMessage();
+
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-            return;
         }
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH}, 1);
-            return;
         }
 
         // Acquire a reference to the system Location Manager
@@ -121,18 +123,23 @@ public class MainActivity extends AppCompatActivity {
 
         LocationListener locationListener = new LocationListener() {
             public void onLocationChanged(Location location) {
-                double lat = location.getLatitude();
-                double lng = location.getLongitude();
+                try {
+                    double lat = location.getLatitude();
+                    double lng = location.getLongitude();
 
-                currentLatitude = (int) (lat * 10000000);
-                currentLongitude = (int) (lng * 10000000);
+                    currentLatitude = (int) (lat * 10000000);
+                    currentLongitude = (int) (lng * 10000000);
 
-                logView.setText("latitude: " + lat + "\nlongitude: " + lng);
+                    logView.setText("latitude: " + lat + "\nlongitude: " + lng);
+                }
+                catch (Exception e) {
+                    Toast.makeText(getApplicationContext(), e.toString(), Toast.LENGTH_LONG).show();
+                }
             }
 
-//            public void onStatusChanged(String provider, int status, Bundle extras) {
-//                logView.setText("onStatusChanged");
-//            }
+            public void onStatusChanged(String provider, int status, Bundle extras) {
+                logView.setText("onStatusChanged");
+            }
 
             public void onProviderEnabled(String provider) {
                 logView.setText("onProviderEnabled");
@@ -188,7 +195,6 @@ public class MainActivity extends AppCompatActivity {
                 if (mThreadConnectedBluetooth != null) {
 
                     // alert message 생성
-                    alertMessageFormat = new RefMessage();
                     alertMessageFormat.id = new String("HYES").getBytes();
                     alertMessageFormat.type = ConvertIntToByteArray(2);
                     alertMessageFormat.body_len = ConvertIntToByteArray(8);
@@ -207,12 +213,17 @@ public class MainActivity extends AppCompatActivity {
                     for (int i = 0; i < 4; i++) tempByte[i] = alertMessageFormat.longitude[i];
                     msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
 
-                    for (int i = 0; i < 4; i++) alertMessageFormat.id[i] = (byte) (alertMessageFormat.id[i] & 0xff);
-                    for (int i = 0; i < 4; i++) alertMessageFormat.type[i] = (byte) (alertMessageFormat.type[i] & 0xff);
-                    for (int i = 0; i < 4; i++) alertMessageFormat.body_len[i] = (byte) (alertMessageFormat.body_len[i] & 0xff);
-                    for (int i = 0; i < 4; i++) alertMessageFormat.latitude[i] = (byte) (alertMessageFormat.latitude[i] & 0xff);
-                    for (int i = 0; i < 4; i++) alertMessageFormat.longitude[i] = (byte) (alertMessageFormat.longitude[i] & 0xff);
-                    mTvSendData.setText("id: " + new String(refMessageFormat.id) + "\n");
+                    for (int i = 0; i < 4; i++)
+                        alertMessageFormat.id[i] = (byte) (alertMessageFormat.id[i] & 0xff);
+                    for (int i = 0; i < 4; i++)
+                        alertMessageFormat.type[i] = (byte) (alertMessageFormat.type[i] & 0xff);
+                    for (int i = 0; i < 4; i++)
+                        alertMessageFormat.body_len[i] = (byte) (alertMessageFormat.body_len[i] & 0xff);
+                    for (int i = 0; i < 4; i++)
+                        alertMessageFormat.latitude[i] = (byte) (alertMessageFormat.latitude[i] & 0xff);
+                    for (int i = 0; i < 4; i++)
+                        alertMessageFormat.longitude[i] = (byte) (alertMessageFormat.longitude[i] & 0xff);
+                    mTvSendData.setText("id: " + new String(alertMessageFormat.id) + "\n");
                     mTvSendData.setText(mTvSendData.getText() + "type: " + ConvertByteArrayToInt(alertMessageFormat.type) + "\n");
                     mTvSendData.setText(mTvSendData.getText() + "body_len: " + ConvertByteArrayToInt(alertMessageFormat.body_len) + "\n");
                     mTvSendData.setText(mTvSendData.getText() + "latitude: " + ConvertByteArrayToInt(alertMessageFormat.latitude) + "\n");
@@ -227,54 +238,28 @@ public class MainActivity extends AppCompatActivity {
 
                 if (msg.what == BT_MESSAGE_READ) {
 
-                    String readMessage = null;
+                    //String readMessage = null;
                     try {
-//                        RefMessage tmpMessage = new RefMessage();
-//                        byte[] id = new byte[]{0x48, 0x59, 0x45, 0x53};
-//                        tmpMessage.id = id;
-//
-//                        byte[] type = new byte[]{0x00, 0x00, 0x00, 0x01};
-//                        tmpMessage.type = type;
-//
-//                        byte[] body_len = new byte[]{0x00, 0x00, 0x00, 0x08};
-//                        tmpMessage.body_len = body_len;
-//
-//                        byte[] latitude = new byte[]{0x35, (byte) 0xA4, (byte) 0xE9, 0x01};
-//                        tmpMessage.latitude = latitude;
-//
-//                        byte[] longitude = new byte[]{0x6b, 0x49, (byte) 0xd2, 0x01};
-//                        tmpMessage.longitude = longitude;
-//
-//                        List<Byte> msgFormat = new ArrayList(Arrays.asList(id));
-//                        msgFormat.addAll(new ArrayList(Arrays.asList(type)));
-//                        msgFormat.addAll(new ArrayList(Arrays.asList(body_len)));
-//                        msgFormat.addAll(new ArrayList(Arrays.asList(latitude)));
-//                        msgFormat.addAll(new ArrayList(Arrays.asList(longitude)));
-//
-//                        mTvReceiveData.setText(msgFormat.toString() + "\n");
-//                        msg.obj = msgFormat.toArray();
-
                         // refMessageFormat = (RefMessage) msg.obj;
                         refMessageFormat.id = Arrays.copyOfRange((byte[]) msg.obj, 0, 4);
-                        for (int i = 0; i < 4; i++) refMessageFormat.id[i] = (byte) (refMessageFormat.id[i] & 0xff);
+                        for (int i = 0; i < 4; i++)
+                            refMessageFormat.id[i] = (byte) (refMessageFormat.id[i] & 0xff);
 
-                        refMessageFormat.type = Arrays.copyOfRange((byte[])msg.obj, 4, 8);
-                        for (int i = 0; i < 4; i++) refMessageFormat.type[i] = (byte) (refMessageFormat.type[i] & 0xff);
+                        refMessageFormat.type = Arrays.copyOfRange((byte[]) msg.obj, 4, 8);
+                        for (int i = 0; i < 4; i++)
+                            refMessageFormat.type[i] = (byte) (refMessageFormat.type[i] & 0xff);
 
-                        refMessageFormat.body_len = Arrays.copyOfRange((byte[])msg.obj, 8, 12);
-                        for (int i = 0; i < 4; i++) refMessageFormat.body_len[i] = (byte) (refMessageFormat.body_len[i] & 0xff);
+                        refMessageFormat.body_len = Arrays.copyOfRange((byte[]) msg.obj, 8, 12);
+                        for (int i = 0; i < 4; i++)
+                            refMessageFormat.body_len[i] = (byte) (refMessageFormat.body_len[i] & 0xff);
 
-                        refMessageFormat.latitude = Arrays.copyOfRange((byte[])msg.obj, 12, 16);
-                        for (int i = 0; i < 4; i++) refMessageFormat.latitude[i] = (byte) (refMessageFormat.latitude[i] & 0xff);
+                        refMessageFormat.latitude = Arrays.copyOfRange((byte[]) msg.obj, 12, 16);
+                        for (int i = 0; i < 4; i++)
+                            refMessageFormat.latitude[i] = (byte) (refMessageFormat.latitude[i] & 0xff);
 
-                        refMessageFormat.longitude = Arrays.copyOfRange((byte[])msg.obj, 16, 20);
-                        for (int i = 0; i < 4; i++) refMessageFormat.longitude[i] = (byte) (refMessageFormat.longitude[i] & 0xff);
-
-//                        mTvReceiveData.setText("id: " + refMessageFormat.id[0] + " " + refMessageFormat.id[1] + " " + refMessageFormat.id[2] + " " + refMessageFormat.id[3] + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + refMessageFormat.type[0] + " " + refMessageFormat.type[1] + " " + refMessageFormat.type[2] + " " + refMessageFormat.type[3] + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " +  refMessageFormat.body_len[0] + " " + refMessageFormat.body_len[1] + " " + refMessageFormat.body_len[2] + " " + refMessageFormat.body_len[3] + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " +  refMessageFormat.latitude[0] + " " + (refMessageFormat.latitude[1] & 0xff) + " " + refMessageFormat.latitude[2] + " " + refMessageFormat.latitude[3] + "\n");
-//                        mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " +  refMessageFormat.longitude[0] + " " + refMessageFormat.longitude[1] + " " + refMessageFormat.longitude[2] + " " + refMessageFormat.longitude[3] + "\n");
+                        refMessageFormat.longitude = Arrays.copyOfRange((byte[]) msg.obj, 16, 20);
+                        for (int i = 0; i < 4; i++)
+                            refMessageFormat.longitude[i] = (byte) (refMessageFormat.longitude[i] & 0xff);
 
                         mTvReceiveData.setText("id: " + new String(refMessageFormat.id) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + ConvertByteArrayToInt(refMessageFormat.type) + "\n");
@@ -282,12 +267,11 @@ public class MainActivity extends AppCompatActivity {
                         mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + ConvertByteArrayToInt(refMessageFormat.latitude) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + ConvertByteArrayToInt(refMessageFormat.longitude) + "\n");
 
-                        readMessage = new String((byte[]) msg.obj, "UTF-8");
+                        //readMessage = new String((byte[]) msg.obj, "UTF-8");
                     } catch (Exception e) {
                         Toast.makeText(getApplicationContext(), "Fail to parse rx message - e: " + e.toString(), Toast.LENGTH_LONG).show();
                         e.printStackTrace();
                     }
-                    // mTvReceiveData.setText(readMessage);
                 }
             }
         };
@@ -308,9 +292,8 @@ public class MainActivity extends AppCompatActivity {
 
         for (int i = 0; i < size; i++) {
             if (i + bytes.length < size) {
-                newBytes[i] = (byte)0x00;
-            }
-            else {
+                newBytes[i] = (byte) 0x00;
+            } else {
                 newBytes[i] = bytes[i + bytes.length - size];
             }
         }
@@ -319,14 +302,14 @@ public class MainActivity extends AppCompatActivity {
         return buff.getInt();
     }
 
-    private final BroadcastReceiver receiver = new BroadcastReceiver(){
+    private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
 
             try {
                 String action = intent.getAction();
-                if(BluetoothDevice.ACTION_FOUND.equals(action)) {
-                    int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI,Short.MIN_VALUE);
+                if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                    int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
                     String name = intent.getStringExtra(BluetoothDevice.EXTRA_NAME);
                     TextView rssi_msg = (TextView) findViewById(R.id.btRssi);
                     if (name == null) {
@@ -334,11 +317,11 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if (mBluetoothDevice.getName().equals(name)) {
                         rssi_msg.setText(name + ": " + rssi + "dBm");
+                        currentRssi = rssi;
                         mBluetoothAdapter.cancelDiscovery();
                     }
                 }
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 Toast.makeText(getApplicationContext(), "Fail to get rssi - e: " + e.toString(), Toast.LENGTH_LONG).show();
             }
         }
@@ -436,6 +419,11 @@ public class MainActivity extends AppCompatActivity {
                 mThreadGetRssi = new GetRssiThread();
                 mThreadGetRssi.start();
             }
+
+            if (mThreadSendNoti == null) {
+                mThreadSendNoti = new SendNotiMessageThread();
+                mThreadSendNoti.start();
+            }
             mBluetoothHandler.obtainMessage(BT_CONNECTING_STATUS, 1, -1).sendToTarget();
 
         } catch (IOException e) {
@@ -444,24 +432,44 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class RefMessage {
-         byte[] id;
-         byte[] type;
-         byte[] body_len;
-         byte[] latitude;
-         byte[] longitude;
+        byte[] id;
+        byte[] type;
+        byte[] body_len;
+        byte[] latitude;
+        byte[] longitude;
 
-         public RefMessage() {
-             id = new byte[4];
-             type = new byte[4];
-             body_len = new byte[4];
-             latitude = new byte[4];
-             longitude = new byte[4];
-         }
+        public RefMessage() {
+            id = new byte[4];
+            type = new byte[4];
+            body_len = new byte[4];
+            latitude = new byte[4];
+            longitude = new byte[4];
+        }
     }
+
+    private class NotiMessage {
+        byte[] id;
+        byte[] type;
+        byte[] body_len;
+        byte[] latitude;
+        byte[] longitude;
+        byte[] rssi;
+
+        public NotiMessage() {
+            id = new byte[4];
+            type = new byte[4];
+            body_len = new byte[4];
+            latitude = new byte[4];
+            longitude = new byte[4];
+            rssi = new byte[4];
+        }
+    }
+
     private class GetRssiThread extends Thread {
         public GetRssiThread() {
             // Register for broadcasts when a device is discovered
             registerReceiver(receiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+
             mBluetoothAdapter.startDiscovery();
         }
         public void run() {
@@ -473,6 +481,66 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    private class SendNotiMessageThread extends Thread {
+        public SendNotiMessageThread() {
+            notiMessageFormat = new NotiMessage();
+        }
+
+        public void run() {
+            while (true) {
+                if (mThreadConnectedBluetooth != null) {
+                    try {
+                        notiMessageFormat.id = new String("HYES").getBytes();
+                        notiMessageFormat.type = ConvertIntToByteArray(3);
+                        notiMessageFormat.body_len = ConvertIntToByteArray(8);
+                        notiMessageFormat.latitude = ConvertIntToByteArray(currentLatitude);
+                        notiMessageFormat.longitude = ConvertIntToByteArray(currentLongitude);
+                        notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
+
+                        Byte[] tempByte = new Byte[4];
+                        for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.id[i];
+                        List<Byte> msgFormat = new ArrayList<Byte>(Arrays.asList(tempByte));
+                        for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.type[i];
+                        msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+                        for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.body_len[i];
+                        msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+                        for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.latitude[i];
+                        msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+                        for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.longitude[i];
+                        msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+                        for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.rssi[i];
+                        msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
+
+                        for (int i = 0; i < 4; i++) notiMessageFormat.id[i] = (byte) (notiMessageFormat.id[i] & 0xff);
+                        for (int i = 0; i < 4; i++) notiMessageFormat.type[i] = (byte) (notiMessageFormat.type[i] & 0xff);
+                        for (int i = 0; i < 4; i++) notiMessageFormat.body_len[i] = (byte) (notiMessageFormat.body_len[i] & 0xff);
+                        for (int i = 0; i < 4; i++) notiMessageFormat.latitude[i] = (byte) (notiMessageFormat.latitude[i] & 0xff);
+                        for (int i = 0; i < 4; i++) notiMessageFormat.longitude[i] = (byte) (notiMessageFormat.longitude[i] & 0xff);
+                        for (int i = 0; i < 4; i++) notiMessageFormat.rssi[i] = (byte) (notiMessageFormat.rssi[i] & 0xff);
+
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                mTvSendData.setText("id: " + new String(notiMessageFormat.id) + "\n");
+                                mTvSendData.setText(mTvSendData.getText() + "type: " + ConvertByteArrayToInt(notiMessageFormat.type) + "\n");
+                                mTvSendData.setText(mTvSendData.getText() + "body_len: " + ConvertByteArrayToInt(notiMessageFormat.body_len) + "\n");
+                                mTvSendData.setText(mTvSendData.getText() + "latitude: " + ConvertByteArrayToInt(notiMessageFormat.latitude) + "\n");
+                                mTvSendData.setText(mTvSendData.getText() + "longitude: " + ConvertByteArrayToInt(notiMessageFormat.longitude) + "\n");
+                                mTvSendData.setText(mTvSendData.getText() + "rssi: " + ConvertByteArrayToInt(notiMessageFormat.rssi) + "\n");
+                            }
+                        });
+
+                        mThreadConnectedBluetooth.write(msgFormat);
+
+                        Thread.sleep(100);
+                    } catch (Exception e) {
+                        Toast.makeText(getApplicationContext(), e.toString(), Toast.LENGTH_LONG).show();
+                    }
+                }
+            }
+        }
+    }
 
     private class ConnectedBluetoothThread extends Thread {
         private final BluetoothSocket mmSocket;
