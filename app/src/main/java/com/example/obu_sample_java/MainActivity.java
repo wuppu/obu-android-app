@@ -137,9 +137,9 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            public void onStatusChanged(String provider, int status, Bundle extras) {
-                logView.setText("onStatusChanged");
-            }
+//            public void onStatusChanged(String provider, int status, Bundle extras) {
+//                logView.setText("onStatusChanged");
+//            }
 
             public void onProviderEnabled(String provider) {
                 logView.setText("onProviderEnabled");
