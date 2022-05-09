@@ -37,6 +37,8 @@ struct MIB
   int32_t ref_longitude;
   int32_t interval;
   char device_name[STR_MAX_SIZE];
+  char output_file[STR_MAX_SIZE];
+  int dbg_level;
 };
 
 /**
@@ -90,11 +92,25 @@ enum eMessageType
 };
 typedef int MessageType;
 
+
+/**
+ * @brief 디버그 레벨0
+ * */
+enum eDebugLevel
+{
+  kDebugLevel_None = 0,
+  kDebugLevel_Error,
+  kDebugLevel_Event,
+  kDebugLevel_Info,
+  kDebugLevel_Dump,
+};
+
 /* 전역 변수 */
 int fd;
 pthread_t tx_thread;
 pthread_t rx_thread;
 struct MIB g_mib;
+FILE *fp;
 
 /**
  * @brief 사용법 출력
@@ -108,13 +124,14 @@ void Usage(char *app) {
 
   printf("\n");
   printf(" [USAGE]\n");
-  printf(" %s <OPTIONS>\n", app);
+  printf(" %s <OPTIONS>\n", app);  
   printf(" --dev <device_name>              Serial port device name.\n");
-  printf(" --lat <ref_latitude>             Reference latitude. If not specified, set to 900000001\n");
-  printf(" --lng <ref_longitude>            Referfence longitude. if not specified, set to 1800000001\n");
-  printf(" --interval <tx_interval (mesc)>  Transmit interval(tx_interval >= 100 msec). If not specified, set to 100 msec\n");
-  //printf(" --dbg <dbg_level>                Print log level. If not specified, set to 1\n");
-  //printf("     0: None, 1: Error, 2: Event, 3: Info, 4: Debug\n");
+  printf(" --file <output_file>             Notification save file path. If not specified, set to noti_save.csv.\n");
+  printf(" --lat <ref_latitude>             Reference latitude. If not specified, set to 900000001.\n");
+  printf(" --lng <ref_longitude>            Referfence longitude. if not specified, set to 1800000001.\n");
+  printf(" --interval <tx_interval (mesc)>  Transmit interval(tx_interval >= 100 msec). If not specified, set to 100 msec.\n");
+  printf(" --dbg <dbg_level>                Print log level. If not specified, set to 1.\n");
+  printf("     0: None, 1: Error, 2: Event, 3: Info, 4: Dump\n");
   printf("\n\n");
 }
 
@@ -125,12 +142,20 @@ void Usage(char *app) {
  * */
 int ProcessingInputParameter(int argc, char *argv[]) {
   g_mib.device_name[0] = '\0';
+  strcpy(g_mib.output_file, "noti_save.csv");
   g_mib.ref_latitude = UNAVAILABLE_LATITUDE;
   g_mib.ref_longitude = UNAVAILABLE_LONGITUDE;
   g_mib.interval = DEFAULT_TX_INTERVAL;
+  g_mib.dbg_level = kDebugLevel_Error;
 
   for (int i = 0; i < argc; i++) {
-    
+    // output_file
+    if (strcmp(argv[i], "--file") == 0) {
+      if (i + 1 < argc) {
+        strcpy(g_mib.output_file, argv[i + 1]);
+      }
+    }
+
     // device_name
     if (strcmp(argv[i], "--dev") == 0) {
       if (i + 1 < argc) {
@@ -158,6 +183,13 @@ int ProcessingInputParameter(int argc, char *argv[]) {
         g_mib.interval = (int32_t)atoi(argv[i + 1]);
       }
     }
+
+    // dbg_level
+    if (strcmp(argv[i], "--dbg") == 0) {
+      if (i + 1 < argc) {
+        g_mib.dbg_level = atoi(argv[i + 1]);
+      }
+    }
   }
 
   if (g_mib.device_name[0] == '\0') {
@@ -178,12 +210,14 @@ int ProcessingInputParameter(int argc, char *argv[]) {
   }
 
   // dump
-  printf("[%s] input parameter: \n", STR_DEBUG);
-  printf("  device_name: %s\n", g_mib.device_name);
-  printf("  ref_latitude: %d\n", g_mib.ref_latitude);
-  printf("  ref_longitude: %d\n", g_mib.ref_longitude);
-  printf("  interval: %d\n", g_mib.interval);
-
+  if (g_mib.dbg_level >= kDebugLevel_Dump) {
+    printf("[%s] input parameter: \n", STR_DEBUG);
+    printf("  device_name: %s\n", g_mib.device_name);
+    printf("  ref_latitude: %d\n", g_mib.ref_latitude);
+    printf("  ref_longitude: %d\n", g_mib.ref_longitude);
+    printf("  interval: %d\n", g_mib.interval);
+  }
+  
   return 0;
 }
 
@@ -200,7 +234,8 @@ int SerialPortInit(char *device_name) {
 
   // Valid check
   if (fd < 0) {
-    printf("[%s] Fail to open serial port - device_name: %s\n", STR_FAIL, g_mib.device_name);
+    if (g_mib.dbg_level >= kDebugLevel_Error)
+      printf("[%s] Fail to open serial port - device_name: %s\n", STR_FAIL, g_mib.device_name);
     return -1;
   }
 
@@ -220,6 +255,28 @@ int SerialPortInit(char *device_name) {
 
 
 /**
+ * @brief Notification 정보를 저장할 파일 초기화
+ * @param [in] path 파일 경로 및 이름
+ * @retval 음수: 실패
+ * @retval 0: 성공
+ * */
+int NotiFileInit(char *path) {
+
+  // 파일 쓰기로 열기
+  fp = fopen(path, "w");
+  if (fp == NULL) {
+    if (g_mib.dbg_level >= kDebugLevel_Error)
+      printf("[%s] Fail to open the file - path: %s\n", STR_FAIL, path);
+    return -1;
+  }
+
+  // Header 입력
+  fprintf(fp, "index, latitude, longitude, rssi\n");
+  return 0;
+}
+
+
+/**
  * @brief 메시지 송신 스레스 프로세스
  * @param [in] data unused
  * */
@@ -227,6 +284,8 @@ void *ProcessingTxMessage(void *data) {
   (void *)data;
 
   while (true) {
+    usleep(g_mib.interval * 1000);
+
     // Create send message
     struct RefMessage ref;
     ref.id[0] = 'H';
@@ -241,36 +300,40 @@ void *ProcessingTxMessage(void *data) {
     // transmit send message
     int send_len = write(fd, &ref, sizeof(struct RefMessage));
     if (send_len < 0) {
-      printf("[%s] Fail to send the message - ret: %d\n", STR_FAIL, send_len);
+      if (g_mib.dbg_level >= kDebugLevel_Error)
+        printf("[%s] Fail to send the message - ret: %d\n", STR_FAIL, send_len);
       continue;
     }
     else {
-      printf("[%s] Success to send the Ref message - send_len: %d\n", STR_SEND, send_len);
-      printf("[%s] RefMessage: \n", STR_DEBUG);
-      printf("  id: ");
-      for (unsigned int i = 0; i < sizeof(ref.id); i++) printf("%02X ", ref.id[i]);
-      printf("("); for (unsigned int i = 0; i < sizeof(ref.id); i++) printf("%c", ref.id[i]); printf(")\n");
-      printf("  type: %d (%s)\n", ref.type, ref.type == kMessageType_Ref ? "Ref" : "NULL");
-      printf("  body_len: %u\n", ref.body_len);
-      printf("  latitude: %d\n", ref.latitude);
-      printf("  longitude: %d\n", ref.longitude);
+      if (g_mib.dbg_level >= kDebugLevel_Event)
+        printf("[%s] Success to send the Ref message - send_len: %d\n", STR_SEND, send_len);
+      if (g_mib.dbg_level >= kDebugLevel_Info) {
+        printf("[%s] RefMessage: \n", STR_INFO);
+        printf("  id: ");
+        for (unsigned int i = 0; i < sizeof(ref.id); i++) printf("%02X ", ref.id[i]);
+        printf("("); for (unsigned int i = 0; i < sizeof(ref.id); i++) printf("%c", ref.id[i]); printf(")\n");
+        printf("  type: %d (%s)\n", ref.type, ref.type == kMessageType_Ref ? "Ref" : "NULL");
+        printf("  body_len: %u\n", ref.body_len);
+        printf("  latitude: %d\n", ref.latitude);
+        printf("  longitude: %d\n", ref.longitude);
+      }
     }
 
     // Print send message dump
-    unsigned char *ptr = (unsigned char *)&ref;
-    printf("[%s] send_len: %zu\n", STR_DEBUG, sizeof(struct RefMessage));
-    printf("[%s] send: \n", STR_DEBUG);
-    for (int i = 0; i < sizeof(struct RefMessage); i++) {
-      if (i != 0 && i % 8 == 0) {
-        if (i != 0 && i % 16 == 0) printf("\n"); 
-        else printf(" "); 
+    if (g_mib.dbg_level >= kDebugLevel_Dump) {
+      unsigned char *ptr = (unsigned char *)&ref;
+      printf("[%s] send_len: %zu\n", STR_DEBUG, sizeof(struct RefMessage));
+      printf("[%s] send: \n", STR_DEBUG);
+      for (int i = 0; i < sizeof(struct RefMessage); i++) {
+        if (i != 0 && i % 8 == 0) {
+          if (i != 0 && i % 16 == 0) printf("\n"); 
+          else printf(" "); 
+        }
+        if (i % 16 == 0) printf("  %06X ", i); 
+        printf("%02X ", *(ptr + i));
       }
-      if (i % 16 == 0) printf("  %06X ", i); 
-      printf("%02X ", *(ptr + i));
+      printf("\n");
     }
-    printf("\n");
-
-    usleep(g_mib.interval * 1000);
   }
   
 }
@@ -283,6 +346,7 @@ void *ProcessingTxMessage(void *data) {
 void *ProcessingRxMessage(void *data) {
   (void *)data;
 
+  int noti_rx_cnt = 0;
   struct AlertMessage *alert = NULL;
   struct NotiMessage *noti = NULL;
 
@@ -300,50 +364,63 @@ void *ProcessingRxMessage(void *data) {
 
     // recv_len < 0 is fail to read the serial port
     if (recv_len < 0) {
-      printf("[%s] Fail to read the message - ret: %d\n", STR_FAIL, recv_len);
+      if (g_mib.dbg_level >= kDebugLevel_Error)
+        printf("[%s] Fail to read the message - ret: %d\n", STR_FAIL, recv_len);
       continue;
     }
     else {
       noti = (struct NotiMessage *)buf;
       
       if (noti->type == kMessageType_Alert) {
-        printf("[%s] Success to read the Alert message - recv_len: %d\n", STR_RECV, recv_len);
-        alert = (struct AlertMessage *)buf;
-        printf("[%s] AlertMessage: \n", STR_DEBUG);
-        printf("  id: ");
-        for (unsigned int i = 0; i < sizeof(alert->id); i++) printf("%02X ", alert->id[i]);
-        printf("("); for (unsigned int i = 0; i < sizeof(alert->id); i++) printf("%c", alert->id[i]); printf(")\n");
-        printf("  type: %d (%s)\n", alert->type, alert->type == kMessageType_Alert ? "Alert" : "NULL");
-        printf("  body_len: %u\n", alert->body_len);
-        printf("  latitude: %d\n", alert->latitude);
-        printf("  longitude: %d\n", alert->longitude);
+        if (g_mib.dbg_level >= kDebugLevel_Event)
+          printf("[%s] Success to read the Alert message - recv_len: %d\n", STR_RECV, recv_len);
+        if (g_mib.dbg_level >= kDebugLevel_Info) {
+          alert = (struct AlertMessage *)buf;
+          printf("[%s] AlertMessage: \n", STR_INFO);
+          printf("  id: ");
+          for (unsigned int i = 0; i < sizeof(alert->id); i++) printf("%02X ", alert->id[i]);
+          printf("("); for (unsigned int i = 0; i < sizeof(alert->id); i++) printf("%c", alert->id[i]); printf(")\n");
+          printf("  type: %d (%s)\n", alert->type, alert->type == kMessageType_Alert ? "Alert" : "NULL");
+          printf("  body_len: %u\n", alert->body_len);
+          printf("  latitude: %d\n", alert->latitude);
+          printf("  longitude: %d\n", alert->longitude);
+        }
       }
       else if (noti->type == kMessageType_Noti) {
-        printf("[%s] Success to read the Noti message - recv_len: %d\n", STR_RECV, recv_len);
-        printf("[%s] NotiMessage: \n", STR_DEBUG);
-        printf("  id: ");
-        for (unsigned int i = 0; i < sizeof(noti->id); i++) printf("%02X ", noti->id[i]);
-        printf("("); for (unsigned int i = 0; i < sizeof(noti->id); i++) printf("%c", noti->id[i]); printf(")\n");
-        printf("  type: %d (%s)\n", noti->type, noti->type == kMessageType_Noti ? "Noti" : "NULL");
-        printf("  body_len: %u\n", noti->body_len);
-        printf("  latitude: %d\n", noti->latitude);
-        printf("  longitude: %d\n", noti->longitude);
-        printf("  rssi: %d\n", noti->rssi);
+        noti_rx_cnt++;
+        if (g_mib.dbg_level >= kDebugLevel_Event) 
+          printf("[%s] Success to read the Noti message - recv_len: %d\n", STR_RECV, recv_len);
+        if (g_mib.dbg_level >= kDebugLevel_Info) {
+          printf("[%s] NotiMessage: \n", STR_INFO);
+          printf("  id: ");
+          for (unsigned int i = 0; i < sizeof(noti->id); i++) printf("%02X ", noti->id[i]);
+          printf("("); for (unsigned int i = 0; i < sizeof(noti->id); i++) printf("%c", noti->id[i]); printf(")\n");
+          printf("  type: %d (%s)\n", noti->type, noti->type == kMessageType_Noti ? "Noti" : "NULL");
+          printf("  body_len: %u\n", noti->body_len);
+          printf("  latitude: %d\n", noti->latitude);
+          printf("  longitude: %d\n", noti->longitude);
+          printf("  rssi: %d\n", noti->rssi);
+        }
+        
+        // 파일에 정보 입력
+        fprintf(fp, "%d, %d, %d, %d\n", noti_rx_cnt, noti->latitude, noti->longitude, noti->rssi);
       }
     }
 
-    // Print received message dump
-    printf("[%s] recv_len: %d\n", STR_DEBUG, recv_len);
-    printf("[%s] recv: \n", STR_DEBUG);
-    for (int i = 0; i < recv_len; i++) { 
-      if (i != 0 && i % 8 == 0) {
-        if (i != 0 && i % 16 == 0) printf("\n");
-        else printf(" "); 
+    if (g_mib.dbg_level >= kDebugLevel_Dump) {
+      // Print received message dump
+      printf("[%s] recv_len: %d\n", STR_DEBUG, recv_len);
+      printf("[%s] recv: \n", STR_DEBUG);
+      for (int i = 0; i < recv_len; i++) { 
+        if (i != 0 && i % 8 == 0) {
+          if (i != 0 && i % 16 == 0) printf("\n");
+          else printf(" "); 
+        }
+        if (i % 16 == 0) printf("  %06X ", i); 
+        printf("%02X ", buf[i]);
       }
-      if (i % 16 == 0) printf("  %06X ", i); 
-      printf("%02X ", buf[i]);
+      printf("\n");
     }
-    printf("\n");
   }    
 }
 
@@ -358,48 +435,73 @@ int main(int argc, char *argv[]) {
 
   ret = ProcessingInputParameter(argc, argv);
   if (ret < 0) {
-    printf("[%s] Fail to process input parameters\n", STR_FAIL);
+    if (g_mib.dbg_level >= kDebugLevel_Error)
+      printf("[%s] Fail to process input parameters\n", STR_FAIL);
     exit(0);
   }
   else {
-    printf("[%s] Success to process input parameters\n", STR_OK);
+    if (g_mib.dbg_level >= kDebugLevel_Event)
+      printf("[%s] Success to process input parameters\n", STR_OK);
   }
 
   // 시리얼 포트 초기화
   ret = SerialPortInit(g_mib.device_name);
   if (ret < 0) {
-    printf("[%s] Fail to initialize the serial port - device_name: %s\n", STR_FAIL, g_mib.device_name);
+    if (g_mib.dbg_level >= kDebugLevel_Error)
+      printf("[%s] Fail to initialize the serial port - device_name: %s\n", STR_FAIL, g_mib.device_name);
     exit(0);
   }
   else {
-    printf("[%s] Success to initialize the serial port - device_name: %s\n", STR_OK, g_mib.device_name);
+    if (g_mib.dbg_level >= kDebugLevel_Event)
+      printf("[%s] Success to initialize the serial port - device_name: %s\n", STR_OK, g_mib.device_name);
+  }
+
+  // 파일 입력 초기화
+  ret = NotiFileInit(g_mib.output_file);
+  if (ret < 0) {
+    if (g_mib.dbg_level >= kDebugLevel_Error) 
+      printf("[%s] Fail to initialize the notification file - output_file: %s\n", STR_FAIL, g_mib.output_file);
+    exit(0);
+  }
+  else {
+    if (g_mib.dbg_level >= kDebugLevel_Event)
+      printf("[%s] Success to initialize the notification file - output_file: %s\n", STR_OK, g_mib.output_file);
   }
 
   // 수신 스레드 시작
   ret = pthread_create(&rx_thread, NULL, ProcessingRxMessage, NULL);
   if (ret < 0) {
-    printf("[%s] Fail to create processing rx message thread\n", STR_FAIL);
+    if (g_mib.dbg_level >= kDebugLevel_Error)
+      printf("[%s] Fail to create processing rx message thread\n", STR_FAIL);
     exit(0);
   }
   else {
-    printf("[%s] Success to create processing rx message thread\n", STR_OK);
+    if (g_mib.dbg_level >= kDebugLevel_Event)
+      printf("[%s] Success to create processing rx message thread\n", STR_OK);
   }
 
   // 송신 스레드 시작
   ret = pthread_create(&tx_thread, NULL, ProcessingTxMessage, NULL);
   if (ret < 0) {
-    printf("[%s] Fail to create processing tx message thread\n", STR_FAIL);
+    if (g_mib.dbg_level >= kDebugLevel_Error)
+      printf("[%s] Fail to create processing tx message thread\n", STR_FAIL);
     exit(0);
   }
   else {
-    printf("[%s] Success to create processing tx message thread\n", STR_OK);
+    if (g_mib.dbg_level >= kDebugLevel_Event)
+      printf("[%s] Success to create processing tx message thread\n", STR_OK);
   }
 
+  char c = getchar();
+  // Close the serial port
+  close(fd);
+  fclose(fp);
+  return 0;
+  
   // 스레드 종료 대기
   pthread_join(rx_thread, (void **)&ret);
   pthread_join(tx_thread, (void **)&ret);
 
-  // Close the serial port
-  close(fd);
+  
   return 0;
 }
