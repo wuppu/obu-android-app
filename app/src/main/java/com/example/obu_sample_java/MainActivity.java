@@ -7,7 +7,6 @@ import androidx.core.app.ActivityCompat;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -24,18 +23,14 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
-import java.sql.Ref;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -137,9 +132,9 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-//            public void onStatusChanged(String provider, int status, Bundle extras) {
-//                logView.setText("onStatusChanged");
-//            }
+            public void onStatusChanged(String provider, int status, Bundle extras) {
+                logView.setText("onStatusChanged");
+            }
 
             public void onProviderEnabled(String provider) {
                 logView.setText("onProviderEnabled");
@@ -315,7 +310,7 @@ public class MainActivity extends AppCompatActivity {
                     if (name == null) {
                         return;
                     }
-                    if (mBluetoothDevice.getName().equals(name)) {
+                    if (mBluetoothDevice.getName().equals(name) && rssi != -100) {
                         rssi_msg.setText(name + ": " + rssi + "dBm");
                         currentRssi = rssi;
                         mBluetoothAdapter.cancelDiscovery();
@@ -489,7 +484,7 @@ public class MainActivity extends AppCompatActivity {
 
         public void run() {
             while (true) {
-                if (mThreadConnectedBluetooth != null) {
+                if (mThreadConnectedBluetooth != null && currentRssi != -255) {
                     try {
                         notiMessageFormat.id = new String("HYES").getBytes();
                         notiMessageFormat.type = ConvertIntToByteArray(3);
