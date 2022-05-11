@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <math.h>
 
 #define STR_MAX_SIZE 256
 #define UNAVAILABLE_LATITUDE 900000001
@@ -271,7 +272,7 @@ int NotiFileInit(char *path) {
   }
 
   // Header 입력
-  fprintf(fp, "index, latitude, longitude, rssi\n");
+  fprintf(fp, "index, rsu_latitude, rsu_longitude, obu_latitude, obu_longitude, distance, rssi\n");
   return 0;
 }
 
@@ -402,8 +403,11 @@ void *ProcessingRxMessage(void *data) {
           printf("  rssi: %d\n", noti->rssi);
         }
         
+        double dist_lat = pow((double)(g_mib.ref_latitude - noti->latitude) / 10000000, 2);
+        double dist_lng = pow((double)(g_mib.ref_longitude - noti->longitude) / 10000000, 2);
+        int distance = (int)(sqrt(dist_lat + dist_lng) * 1000);
         // 파일에 정보 입력
-        fprintf(fp, "%d, %d, %d, %d\n", noti_rx_cnt, noti->latitude, noti->longitude, noti->rssi);
+        fprintf(fp, "%d, %d, %d, %d, %d, %d, %d\n", noti_rx_cnt, g_mib.ref_latitude, g_mib.ref_longitude, noti->latitude, noti->longitude, distance, noti->rssi);
       }
     }
 
