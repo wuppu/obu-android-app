@@ -14,6 +14,10 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -78,6 +82,17 @@ public class MainActivity extends AppCompatActivity {
     int currentLongitude = UNAVAILABLE_LONGITUDE;
     int currentRssi = UNAVAILABLE_RSSI;
 
+    // IMU 센서
+    private SensorManager mSensorManager = null;
+    private SensorEventListener mAccLis;
+    private Sensor mAccelometerSensor = null;
+    boolean isSensorRunnging = false;
+
+    float[] rotationMatrix = new float[9];
+    float[] earthData = new float[3];
+    float[] accelerationData = new float[3];
+    float[] magneticData = new float[3];
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -96,6 +111,12 @@ public class MainActivity extends AppCompatActivity {
         refMessageFormat = new RefMessage();
         alertMessageFormat = new RefMessage();
 
+        // Using the gyro and accel
+        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
+        // Using the accel
+        mAccelometerSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        mAccLis = new AccelometerListener();
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
@@ -187,6 +208,14 @@ public class MainActivity extends AppCompatActivity {
         mBtnSendData.setOnClickListener(new Button.OnClickListener() {
             @Override
             public void onClick(View view) {
+                if (isSensorRunnging == false) {
+                    isSensorRunnging = true;
+                    mSensorManager.registerListener(mAccLis, mAccelometerSensor, SensorManager.SENSOR_DELAY_UI);
+                }
+                else {
+                    isSensorRunnging = false;
+                    mSensorManager.unregisterListener(mAccLis);
+                }
                 if (mThreadConnectedBluetooth != null) {
 
                     // alert message 생성
@@ -591,6 +620,26 @@ public class MainActivity extends AppCompatActivity {
             } catch (IOException e) {
                 Toast.makeText(getApplicationContext(), "소켓 해제 중 오류가 발생했습니다.", Toast.LENGTH_LONG).show();
             }
+        }
+    }
+
+    private class AccelometerListener implements SensorEventListener {
+
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            double accX = event.values[0];
+            double accY = event.values[1];
+            double accZ = event.values[2];
+
+            double angleXZ = Math.atan2(accX,  accZ) * 180/Math.PI;
+            double angleYZ = Math.atan2(accY,  accZ) * 180/Math.PI;
+
+            mTvSendData.setText("ACCELOMETER: " + "\n" + "x: " + String.format("%.4f", event.values[0]) + ", y: " + String.format("%.4f", event.values[1]) + ", z: " + String.format("%.4f", event.values[2]));
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int i) {
+
         }
     }
 }
