@@ -27,6 +27,8 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CompoundButton;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -47,7 +49,9 @@ public class MainActivity extends AppCompatActivity {
     TextView mTvReceiveData;
     TextView mTvSendData;
     TextView logView;
+    TextView accLogView;
     TextView btRssi;
+    Switch gpsSwitch;
     Button mBtnBluetoothOn;
     Button mBtnBluetoothOff;
     Button mBtnConnect;
@@ -77,21 +81,39 @@ public class MainActivity extends AppCompatActivity {
     final static int UNAVAILABLE_LATITUDE = 900000001;
     final static int UNAVAILABLE_LONGITUDE = 1800000001;
     final static int UNAVAILABLE_RSSI = -255;
+    final static int ACC_NONE = -999;
 
     int currentLatitude = UNAVAILABLE_LATITUDE;
     int currentLongitude = UNAVAILABLE_LONGITUDE;
     int currentRssi = UNAVAILABLE_RSSI;
 
+    int refLatitude = UNAVAILABLE_LATITUDE;
+    int refLongitude = UNAVAILABLE_LONGITUDE;
+
+    double currentAccX = ACC_NONE;
+    double currentAccY = ACC_NONE;
+    double currentAccZ = ACC_NONE;
+
+    double prevAccX = 0;
+    double prevAccY = 0;
+
+    double prevValX = 0;
+    double prevValY = 0;
+
+    double prevPosX = 0;
+    double prevPosY = 0;
+
     // IMU 센서
     private SensorManager mSensorManager = null;
     private SensorEventListener mAccLis;
     private Sensor mAccelometerSensor = null;
+    private Sensor mMagneticSensor = null;
     boolean isSensorRunnging = false;
 
-    float[] rotationMatrix = new float[9];
-    float[] earthData = new float[3];
-    float[] accelerationData = new float[3];
-    float[] magneticData = new float[3];
+    float[] accMat = new float[3];
+    float[] magMat = new float[3];
+    float[] earth = new float[3];
+    float[] rotMat = new float[9];
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -107,6 +129,9 @@ public class MainActivity extends AppCompatActivity {
         mBtnConnect = (Button) findViewById(R.id.btnConnect);
         mBtnSendData = (Button) findViewById(R.id.btnSendData);
         logView = (TextView) findViewById(R.id.logView);
+        accLogView = (TextView) findViewById(R.id.accLogView);
+        gpsSwitch = (Switch) findViewById(R.id.gpsSwitch);
+
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         refMessageFormat = new RefMessage();
         alertMessageFormat = new RefMessage();
@@ -116,6 +141,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Using the accel
         mAccelometerSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        mMagneticSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         mAccLis = new AccelometerListener();
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -136,6 +162,8 @@ public class MainActivity extends AppCompatActivity {
 
         Log.d("Main", "isGPSEnabled=" + isGPSEnabled);
         Log.d("Main", "isNetworkEnabled=" + isNetworkEnabled);
+        mSensorManager.registerListener(mAccLis, mAccelometerSensor, 100000);
+        mSensorManager.registerListener(mAccLis, mMagneticSensor, 100000);
 
         LocationListener locationListener = new LocationListener() {
             public void onLocationChanged(Location location) {
@@ -205,17 +233,30 @@ public class MainActivity extends AppCompatActivity {
                 listPairedDevices();
             }
         });
+        gpsSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                isSensorRunnging = !isChecked;
+
+                if (isSensorRunnging) {
+                    mSensorManager.registerListener(mAccLis, mAccelometerSensor, 100000);
+                }
+                else {
+                    mSensorManager.unregisterListener(mAccLis);
+                }
+            }
+        });
         mBtnSendData.setOnClickListener(new Button.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if (isSensorRunnging == false) {
-                    isSensorRunnging = true;
-                    mSensorManager.registerListener(mAccLis, mAccelometerSensor, SensorManager.SENSOR_DELAY_UI);
-                }
-                else {
-                    isSensorRunnging = false;
-                    mSensorManager.unregisterListener(mAccLis);
-                }
+//                if (isSensorRunnging == false) {
+//                    isSensorRunnging = true;
+//                    mSensorManager.registerListener(mAccLis, mAccelometerSensor, SensorManager.SENSOR_DELAY_UI);
+//                }
+//                else {
+//                    isSensorRunnging = false;
+//                    mSensorManager.unregisterListener(mAccLis);
+//                }
                 if (mThreadConnectedBluetooth != null) {
 
                     // alert message 생성
@@ -290,6 +331,9 @@ public class MainActivity extends AppCompatActivity {
                         mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " + ConvertByteArrayToInt(refMessageFormat.body_len) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + ConvertByteArrayToInt(refMessageFormat.latitude) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + ConvertByteArrayToInt(refMessageFormat.longitude) + "\n");
+
+                        refLatitude = ConvertByteArrayToInt(refMessageFormat.latitude);
+                        refLongitude = ConvertByteArrayToInt(refMessageFormat.longitude);
 
                         //readMessage = new String((byte[]) msg.obj, "UTF-8");
                     } catch (Exception e) {
@@ -515,12 +559,22 @@ public class MainActivity extends AppCompatActivity {
             while (true) {
                 if (mThreadConnectedBluetooth != null && currentRssi != -255) {
                     try {
-                        notiMessageFormat.id = new String("HYES").getBytes();
-                        notiMessageFormat.type = ConvertIntToByteArray(3);
-                        notiMessageFormat.body_len = ConvertIntToByteArray(8);
-                        notiMessageFormat.latitude = ConvertIntToByteArray(currentLatitude);
-                        notiMessageFormat.longitude = ConvertIntToByteArray(currentLongitude);
-                        notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
+                        if (isSensorRunnging) {
+                            notiMessageFormat.id = new String("HYES").getBytes();
+                            notiMessageFormat.type = ConvertIntToByteArray(3);
+                            notiMessageFormat.body_len = ConvertIntToByteArray(8);
+                            notiMessageFormat.latitude = ConvertIntToByteArray(refLatitude);
+                            notiMessageFormat.longitude = ConvertIntToByteArray(refLongitude);
+                            notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
+                        }
+                        else {
+                            notiMessageFormat.id = new String("HYES").getBytes();
+                            notiMessageFormat.type = ConvertIntToByteArray(3);
+                            notiMessageFormat.body_len = ConvertIntToByteArray(8);
+                            notiMessageFormat.latitude = ConvertIntToByteArray(currentLatitude);
+                            notiMessageFormat.longitude = ConvertIntToByteArray(currentLongitude);
+                            notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
+                        }
 
                         Byte[] tempByte = new Byte[4];
                         for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.id[i];
@@ -627,14 +681,64 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onSensorChanged(SensorEvent event) {
+
+
+            if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
+                accMat = event.values.clone();
+            }
+            else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+                magMat = event.values.clone();
+            }
+
+            SensorManager.getRotationMatrix(rotMat, null, accMat, magMat);
+
+            earth[0] = rotMat[0] * accMat[0] + rotMat[1] * accMat[1] + rotMat[2] * accMat[2];
+            earth[1] = rotMat[3] * accMat[0] + rotMat[4] * accMat[1] + rotMat[5] * accMat[2];
+            earth[2] = rotMat[6] * accMat[0] + rotMat[7] * accMat[1] + rotMat[8] * accMat[2];
+
             double accX = event.values[0];
             double accY = event.values[1];
             double accZ = event.values[2];
 
+            // 전역변수에 저장
+            currentAccX = accX;
+            currentAccY = accY;
+            currentAccZ = accZ;
+
             double angleXZ = Math.atan2(accX,  accZ) * 180/Math.PI;
             double angleYZ = Math.atan2(accY,  accZ) * 180/Math.PI;
 
-            mTvSendData.setText("ACCELOMETER: " + "\n" + "x: " + String.format("%.4f", event.values[0]) + ", y: " + String.format("%.4f", event.values[1]) + ", z: " + String.format("%.4f", event.values[2]));
+            double x_val = 0;
+            double x_pos = 0;
+
+            double y_val = 0;
+            double y_pos = 0;
+
+            double timeSample = 0.1f;
+
+            x_val = prevValX + ((0.5 * (currentAccX + prevAccX)) * timeSample);
+            x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
+
+            y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
+            y_pos = prevPosY + ((0.5 * (y_val + prevValY)) * timeSample);
+
+
+//            mTvSendData.setText(x_val + " = " + prevValX + " + " + "((0.5 * (" + currentAccX + " + " + prevAccX + "))" + timeSample + ")\n\n");
+//
+//            mTvSendData.setText(mTvSendData.getText() + "" + x_pos + " = " + prevPosX + " + " + "((0.5 * (" + x_val + " + " + prevValX + "))" + timeSample + ")");
+            mTvSendData.setText("x_pos: " + x_pos + ", y_pos: " + y_pos);
+            prevPosX = x_pos;
+            prevValX = x_val;
+
+            prevPosY = y_pos;
+            prevValY = y_val;
+
+            prevAccX = currentAccX;
+            prevAccY = currentAccY;
+
+            accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
+            accLogView.setText(accLogView.getText() + "earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]));
+
         }
 
         @Override
