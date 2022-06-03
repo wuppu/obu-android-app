@@ -90,9 +90,9 @@ public class MainActivity extends AppCompatActivity {
     int refLatitude = UNAVAILABLE_LATITUDE;
     int refLongitude = UNAVAILABLE_LONGITUDE;
 
-    double currentAccX = ACC_NONE;
-    double currentAccY = ACC_NONE;
-    double currentAccZ = ACC_NONE;
+    double currentAccX = 0;
+    double currentAccY = 0;
+    double currentAccZ = 0;
 
     double prevAccX = 0;
     double prevAccY = 0;
@@ -102,6 +102,10 @@ public class MainActivity extends AppCompatActivity {
 
     double prevPosX = 0;
     double prevPosY = 0;
+
+    // 현재 이동 거리
+    double currentPosX = 0;
+    double currentPosY = 0;
 
     // IMU 센서
     private SensorManager mSensorManager = null;
@@ -685,59 +689,91 @@ public class MainActivity extends AppCompatActivity {
 
             if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
                 accMat = event.values.clone();
+
+                SensorManager.getRotationMatrix(rotMat, null, accMat, magMat);
+
+                earth[0] = rotMat[0] * accMat[0] + rotMat[1] * accMat[1] + rotMat[2] * accMat[2];
+                earth[1] = rotMat[3] * accMat[0] + rotMat[4] * accMat[1] + rotMat[5] * accMat[2];
+                earth[2] = rotMat[6] * accMat[0] + rotMat[7] * accMat[1] + rotMat[8] * accMat[2];
+
+                currentAccX = earth[0];
+                currentAccY = earth[1];
+                currentAccZ = earth[2];
+
+                double x_val = 0;
+                double x_pos = 0;
+
+                double y_val = 0;
+                double y_pos = 0;
+
+                double timeSample = 0.1f;
+
+                x_val = prevValX + ((0.5 * (currentAccX + prevAccX)) * timeSample);
+                x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
+
+                y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
+                y_pos = prevPosY + ((0.5 * (y_val + prevValY)) * timeSample);
+
+                prevPosX = x_pos;
+                prevValX = x_val;
+
+                prevPosY = y_pos;
+                prevValY = y_val;
+
+                prevAccX = currentAccX;
+                prevAccY = currentAccY;
+
+                // accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
+                accLogView.setText("earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]) + "\n");
+                accLogView.setText(accLogView.getText() + "earth x_pos: " + String.format("%.4f", x_pos) + ", y_pos: " + String.format("%.4f", y_pos));
             }
             else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
                 magMat = event.values.clone();
             }
 
-            SensorManager.getRotationMatrix(rotMat, null, accMat, magMat);
-
-            earth[0] = rotMat[0] * accMat[0] + rotMat[1] * accMat[1] + rotMat[2] * accMat[2];
-            earth[1] = rotMat[3] * accMat[0] + rotMat[4] * accMat[1] + rotMat[5] * accMat[2];
-            earth[2] = rotMat[6] * accMat[0] + rotMat[7] * accMat[1] + rotMat[8] * accMat[2];
-
-            double accX = event.values[0];
-            double accY = event.values[1];
-            double accZ = event.values[2];
-
-            // 전역변수에 저장
-            currentAccX = accX;
-            currentAccY = accY;
-            currentAccZ = accZ;
-
-            double angleXZ = Math.atan2(accX,  accZ) * 180/Math.PI;
-            double angleYZ = Math.atan2(accY,  accZ) * 180/Math.PI;
-
-            double x_val = 0;
-            double x_pos = 0;
-
-            double y_val = 0;
-            double y_pos = 0;
-
-            double timeSample = 0.1f;
-
-            x_val = prevValX + ((0.5 * (currentAccX + prevAccX)) * timeSample);
-            x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
-
-            y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
-            y_pos = prevPosY + ((0.5 * (y_val + prevValY)) * timeSample);
-
-
-//            mTvSendData.setText(x_val + " = " + prevValX + " + " + "((0.5 * (" + currentAccX + " + " + prevAccX + "))" + timeSample + ")\n\n");
 //
-//            mTvSendData.setText(mTvSendData.getText() + "" + x_pos + " = " + prevPosX + " + " + "((0.5 * (" + x_val + " + " + prevValX + "))" + timeSample + ")");
-            mTvSendData.setText("x_pos: " + x_pos + ", y_pos: " + y_pos);
-            prevPosX = x_pos;
-            prevValX = x_val;
+//            double accX = event.values[0];
+//            double accY = event.values[1];
+//            double accZ = event.values[2];
+//
+//            // 전역변수에 저장
+//            currentAccX = accX;
+//            currentAccY = accY;
+//            currentAccZ = accZ;
+//
+//            double angleXZ = Math.atan2(accX,  accZ) * 180/Math.PI;
+//            double angleYZ = Math.atan2(accY,  accZ) * 180/Math.PI;
+//
+//            double x_val = 0;
+//            double x_pos = 0;
+//
+//            double y_val = 0;
+//            double y_pos = 0;
+//
+//            double timeSample = 0.1f;
+//
+//            x_val = prevValX + ((0.5 * (currentAccX + prevAccX)) * timeSample);
+//            x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
+//
+//            y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
+//            y_pos = prevPosY + ((0.5 * (y_val + prevValY)) * timeSample);
+//
+//
+////            mTvSendData.setText(x_val + " = " + prevValX + " + " + "((0.5 * (" + currentAccX + " + " + prevAccX + "))" + timeSample + ")\n\n");
+////
+////            mTvSendData.setText(mTvSendData.getText() + "" + x_pos + " = " + prevPosX + " + " + "((0.5 * (" + x_val + " + " + prevValX + "))" + timeSample + ")");
+//            mTvSendData.setText("x_pos: " + x_pos + ", y_pos: " + y_pos);
+//            prevPosX = x_pos;
+//            prevValX = x_val;
+//
+//            prevPosY = y_pos;
+//            prevValY = y_val;
+//
+//            prevAccX = currentAccX;
+//            prevAccY = currentAccY;
 
-            prevPosY = y_pos;
-            prevValY = y_val;
-
-            prevAccX = currentAccX;
-            prevAccY = currentAccY;
-
-            accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
-            accLogView.setText(accLogView.getText() + "earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]));
+//            accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
+//            accLogView.setText(accLogView.getText() + "earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]));
 
         }
 
