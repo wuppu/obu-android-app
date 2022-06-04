@@ -561,7 +561,7 @@ public class MainActivity extends AppCompatActivity {
 
         public void run() {
             while (true) {
-                if (mThreadConnectedBluetooth != null && currentRssi != -255) {
+                if (mThreadConnectedBluetooth != null) {
                     try {
                         if (isSensorRunnging) {
                             notiMessageFormat.id = new String("HYES").getBytes();
