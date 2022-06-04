@@ -686,20 +686,24 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onSensorChanged(SensorEvent event) {
 
-
+            // 가속도 센서 값 읽기
             if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
                 accMat = event.values.clone();
 
+                // 가속도 매트릭스, 마그네틱 매트릭스를 통해 로테이션 매트릭스 생성
                 SensorManager.getRotationMatrix(rotMat, null, accMat, magMat);
 
+                // 로테이션 매트릭스를 통해 디바이스 기반의 가속도 센서 값을 지구계 기반의 가속도 센서 값으로 변환
                 earth[0] = rotMat[0] * accMat[0] + rotMat[1] * accMat[1] + rotMat[2] * accMat[2];
                 earth[1] = rotMat[3] * accMat[0] + rotMat[4] * accMat[1] + rotMat[5] * accMat[2];
                 earth[2] = rotMat[6] * accMat[0] + rotMat[7] * accMat[1] + rotMat[8] * accMat[2];
 
+                // 변환 값을 전역변수 값에 저장
                 currentAccX = earth[0];
                 currentAccY = earth[1];
                 currentAccZ = earth[2];
 
+                // 가속도 센서 값을 누적 거리 데이터로 변환
                 double x_val = 0;
                 double x_pos = 0;
 
@@ -708,12 +712,15 @@ public class MainActivity extends AppCompatActivity {
 
                 double timeSample = 0.1f;
 
+                // 가속도 값을 속도 값으로 적분
                 x_val = prevValX + ((0.5 * (currentAccX + prevAccX)) * timeSample);
                 x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
 
+                // 속도 값을 누적 거리 값으로 적분
                 y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
                 y_pos = prevPosY + ((0.5 * (y_val + prevValY)) * timeSample);
 
+                // 현재 적분 데이터를 이전 데이터에 저장
                 prevPosX = x_pos;
                 prevValX = x_val;
 
@@ -723,6 +730,7 @@ public class MainActivity extends AppCompatActivity {
                 prevAccX = currentAccX;
                 prevAccY = currentAccY;
 
+                // Accelometer Data에 출력 (지구계 기반의 데이터만 출력)
                 // accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
                 accLogView.setText("earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]) + "\n");
                 accLogView.setText(accLogView.getText() + "earth x_pos: " + String.format("%.4f", x_pos) + ", y_pos: " + String.format("%.4f", y_pos));
@@ -774,7 +782,6 @@ public class MainActivity extends AppCompatActivity {
 
 //            accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
 //            accLogView.setText(accLogView.getText() + "earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]));
-
         }
 
         @Override
