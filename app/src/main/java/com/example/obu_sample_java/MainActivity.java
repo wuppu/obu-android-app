@@ -81,8 +81,13 @@ public class MainActivity extends AppCompatActivity {
     final static int UNAVAILABLE_LATITUDE = 900000001;
     final static int UNAVAILABLE_LONGITUDE = 1800000001;
     final static int UNAVAILABLE_RSSI = -255;
-    final static int ACC_NONE = -999;
 
+    final static double LATITUDE_TO_GPS_CONST = 0.111;
+    final static double LONGITUDE_TO_GPS_CONST = 0.089;
+    final static double GPS_MIN_UNIT = 0.000001;
+
+    int lastLatitude = UNAVAILABLE_LATITUDE;
+    int lastLongitude = UNAVAILABLE_LONGITUDE;
     int currentLatitude = UNAVAILABLE_LATITUDE;
     int currentLongitude = UNAVAILABLE_LONGITUDE;
     int currentRssi = UNAVAILABLE_RSSI;
@@ -177,6 +182,9 @@ public class MainActivity extends AppCompatActivity {
 
                     currentLatitude = (int) (lat * 10000000);
                     currentLongitude = (int) (lng * 10000000);
+
+                    lastLatitude = currentLatitude;
+                    lastLongitude = currentLongitude;
 
                     logView.setText("latitude: " + lat + "\nlongitude: " + lng);
                 }
@@ -564,11 +572,17 @@ public class MainActivity extends AppCompatActivity {
                 if (mThreadConnectedBluetooth != null) {
                     try {
                         if (isSensorRunnging) {
+                            // 이동 거리를 gps 이동 좌표로 계산
+                            int accGpsPosX = (int)((GPS_MIN_UNIT * (currentPosX / LATITUDE_TO_GPS_CONST)) * 10000000);
+                            int accGpsPosY = (int)((GPS_MIN_UNIT * (currentPosY / LONGITUDE_TO_GPS_CONST)) * 10000000);
+
                             notiMessageFormat.id = new String("HYES").getBytes();
                             notiMessageFormat.type = ConvertIntToByteArray(3);
                             notiMessageFormat.body_len = ConvertIntToByteArray(8);
-                            notiMessageFormat.latitude = ConvertIntToByteArray(refLatitude);
-                            notiMessageFormat.longitude = ConvertIntToByteArray(refLongitude);
+                            
+                            // 마지막 gps 좌표에 이동 좌표를 더하여 전송
+                            notiMessageFormat.latitude = ConvertIntToByteArray(lastLatitude + accGpsPosX);
+                            notiMessageFormat.longitude = ConvertIntToByteArray(lastLongitude + accGpsPosY);
                             notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
                         }
                         else {
@@ -729,6 +743,9 @@ public class MainActivity extends AppCompatActivity {
 
                 prevAccX = currentAccX;
                 prevAccY = currentAccY;
+
+                currentPosX = x_pos;
+                currentPosY = y_pos;
 
                 // Accelometer Data에 출력 (지구계 기반의 데이터만 출력)
                 // accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");

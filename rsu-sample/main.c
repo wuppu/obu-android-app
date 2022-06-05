@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <math.h>
 
+#define PI 3.14159265357869323846
 #define STR_MAX_SIZE 256
 #define UNAVAILABLE_LATITUDE 900000001
 #define UNAVAILABLE_LONGITUDE 1800000001
@@ -134,6 +135,53 @@ void Usage(char *app) {
   printf(" --dbg <dbg_level>                Print log level. If not specified, set to 1.\n");
   printf("     0: None, 1: Error, 2: Event, 3: Info, 4: Dump\n");
   printf("\n\n");
+}
+
+/**
+ * @brief 소수점 도(decimal degree)를 라디언(radian)으로 변환한다.
+ * @param[in] deg 변환할 도 값
+ * @return 변환한 라디언 값
+ * */
+double ConvertDecimalDegreesToRadians(double deg)
+{
+  return (deg * PI / 180);
+}
+
+/**
+ * @brief 라디언(radian)을 소수점 도(decimal degree)로 변환한다.
+ * @param[in] rad 변환할 라디언 값
+ * @return 변환된 도 값
+ * */
+double ConvertRadiansToDeimalDegrees(double rad)
+{
+  return (rad * 180 / PI);
+}
+
+/**
+ * @brief 두 좌표의 거리(미터단위)를 계산하여 반환한다.
+ * @param[in] lat1 좌표1의 위도(도 단위)
+ * @param[in] lon1 좌표1의 경도(도 단위)
+ * @param[in] lat2 좌표2의 위도(도 단위)
+ * @param[in] lon2 좌표2의 경도(도 단위)
+ * @return 두 좌표간 거리(미터 단위)
+ * */
+double GetDistanceBetweenPoints(double lat1, double lon1, double lat2, double lon2)
+{
+  double theta, dist;
+  if ((lat1 == lat2) && (lon1 == lon2)) {
+    return 0;
+  }
+  else {
+    theta = lon1 - lon2;
+    dist = sin(ConvertDecimalDegreesToRadians(lat1)) * sin(ConvertDecimalDegreesToRadians(lat2)) +
+           cos(ConvertDecimalDegreesToRadians(lat1)) * cos(ConvertDecimalDegreesToRadians(lat2)) * 
+           cos(ConvertDecimalDegreesToRadians(theta));
+    dist = acos(dist);
+    dist = ConvertRadiansToDeimalDegrees(dist);
+    dist = dist * 60 * 1.1515;
+    dist = dist * 1.609344 * 1000; // 미터 단위 변환
+    return dist;
+  }
 }
 
 /**
@@ -403,11 +451,16 @@ void *ProcessingRxMessage(void *data) {
           printf("  rssi: %d\n", noti->rssi);
         }
         
-        double dist_lat = pow((double)(g_mib.ref_latitude - noti->latitude) / 10000000, 2);
-        double dist_lng = pow((double)(g_mib.ref_longitude - noti->longitude) / 10000000, 2);
-        int distance = (int)(sqrt(dist_lat + dist_lng) * 1000);
+        // 계산식 사용
+        double dist = GetDistanceBetweenPoints(g_mib.ref_latitude / 10000000,
+                                               g_mib.ref_longitude / 10000000,
+                                               noti->latitude / 10000000,
+                                               noti->longitude / 10000000);
+        // double dist_lat = pow((double)(g_mib.ref_latitude - noti->latitude) / 10000000, 2);
+        // double dist_lng = pow((double)(g_mib.ref_longitude - noti->longitude) / 10000000, 2);
+        // int distance = (int)(sqrt(dist_lat + dist_lng) * 1000);
         // 파일에 정보 입력
-        fprintf(fp, "%d, %d, %d, %d, %d, %d, %d\n", noti_rx_cnt, g_mib.ref_latitude, g_mib.ref_longitude, noti->latitude, noti->longitude, distance, noti->rssi);
+        fprintf(fp, "%d, %d, %d, %d, %d, %lf, %d\n", noti_rx_cnt, g_mib.ref_latitude, g_mib.ref_longitude, noti->latitude, noti->longitude, dist, noti->rssi);
       }
     }
 
