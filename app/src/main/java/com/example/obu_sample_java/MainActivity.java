@@ -117,12 +117,17 @@ public class MainActivity extends AppCompatActivity {
     private SensorEventListener mAccLis;
     private Sensor mAccelometerSensor = null;
     private Sensor mMagneticSensor = null;
+    private Sensor mGravitySensor = null;
     boolean isSensorRunnging = false;
 
     float[] accMat = new float[3];
     float[] magMat = new float[3];
+    float[] gravity = new float[3];
     float[] earth = new float[3];
     float[] rotMat = new float[9];
+
+    // 칼만 필터
+    private KalmanFilter kalman;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -151,7 +156,11 @@ public class MainActivity extends AppCompatActivity {
         // Using the accel
         mAccelometerSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
         mMagneticSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        mGravitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
         mAccLis = new AccelometerListener();
+
+        // Kalman
+        kalman = new KalmanFilter(0.0f);
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
@@ -171,8 +180,9 @@ public class MainActivity extends AppCompatActivity {
 
         Log.d("Main", "isGPSEnabled=" + isGPSEnabled);
         Log.d("Main", "isNetworkEnabled=" + isNetworkEnabled);
-        mSensorManager.registerListener(mAccLis, mAccelometerSensor, 100000);
-        mSensorManager.registerListener(mAccLis, mMagneticSensor, 100000);
+        mSensorManager.registerListener(mAccLis, mAccelometerSensor, 10000);
+        mSensorManager.registerListener(mAccLis, mMagneticSensor, 10000);
+        mSensorManager.registerListener(mAccLis, mGravitySensor, 10000);
 
         LocationListener locationListener = new LocationListener() {
             public void onLocationChanged(Location location) {
@@ -251,7 +261,24 @@ public class MainActivity extends AppCompatActivity {
                 isSensorRunnging = !isChecked;
 
                 if (isSensorRunnging) {
-                    mSensorManager.registerListener(mAccLis, mAccelometerSensor, 100000);
+                    currentAccX = 0;
+                    currentAccY = 0;
+                    currentAccZ = 0;
+
+                    prevAccX = 0;
+                    prevAccY = 0;
+
+                    prevValX = 0;
+                    prevValY = 0;
+
+                    prevPosX = 0;
+                    prevPosY = 0;
+
+                    currentPosX = 0;
+                    currentPosY = 0;
+                    mSensorManager.registerListener(mAccLis, mAccelometerSensor, 10000);
+                    mSensorManager.registerListener(mAccLis, mMagneticSensor, 10000);
+                    mSensorManager.registerListener(mAccLis, mGravitySensor, 10000);
                 }
                 else {
                     mSensorManager.unregisterListener(mAccLis);
@@ -704,13 +731,17 @@ public class MainActivity extends AppCompatActivity {
             if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
                 accMat = event.values.clone();
 
+                accMat[0] = kalman.update(accMat[0]);
+                accMat[1] = kalman.update(accMat[1]);
+                accMat[2] = kalman.update(accMat[2]);
+
                 // 가속도 매트릭스, 마그네틱 매트릭스를 통해 로테이션 매트릭스 생성
-                SensorManager.getRotationMatrix(rotMat, null, accMat, magMat);
+                SensorManager.getRotationMatrix(rotMat, null, gravity, magMat);
 
                 // 로테이션 매트릭스를 통해 디바이스 기반의 가속도 센서 값을 지구계 기반의 가속도 센서 값으로 변환
-                earth[0] = rotMat[0] * accMat[0] + rotMat[1] * accMat[1] + rotMat[2] * accMat[2];
-                earth[1] = rotMat[3] * accMat[0] + rotMat[4] * accMat[1] + rotMat[5] * accMat[2];
-                earth[2] = rotMat[6] * accMat[0] + rotMat[7] * accMat[1] + rotMat[8] * accMat[2];
+                earth[0] = (rotMat[0] * accMat[0]) + (rotMat[1] * accMat[1]) + (rotMat[2] * accMat[2]);
+                earth[1] = (rotMat[3] * accMat[0]) + (rotMat[4] * accMat[1]) + (rotMat[5] * accMat[2]);
+                earth[2] = (rotMat[6] * accMat[0]) + (rotMat[7] * accMat[1]) + (rotMat[8] * accMat[2]);
 
                 // 변환 값을 전역변수 값에 저장
                 currentAccX = earth[0];
@@ -724,14 +755,14 @@ public class MainActivity extends AppCompatActivity {
                 double y_val = 0;
                 double y_pos = 0;
 
-                double timeSample = 0.1f;
+                double timeSample = 0.01f;
 
                 // 가속도 값을 속도 값으로 적분
                 x_val = prevValX + ((0.5 * (currentAccX + prevAccX)) * timeSample);
-                x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
+                y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
 
                 // 속도 값을 누적 거리 값으로 적분
-                y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
+                x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
                 y_pos = prevPosY + ((0.5 * (y_val + prevValY)) * timeSample);
 
                 // 현재 적분 데이터를 이전 데이터에 저장
@@ -749,11 +780,14 @@ public class MainActivity extends AppCompatActivity {
 
                 // Accelometer Data에 출력 (지구계 기반의 데이터만 출력)
                 // accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
-                accLogView.setText("earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]) + "\n");
+                accLogView.setText("earth x: " + String.format("%.4f", currentAccX) + ", y: " + String.format("%.4f", currentAccY) + ", z: " + String.format("%.4f", currentAccZ) + "\n");
                 accLogView.setText(accLogView.getText() + "earth x_pos: " + String.format("%.4f", x_pos) + ", y_pos: " + String.format("%.4f", y_pos));
             }
             else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
                 magMat = event.values.clone();
+            }
+            else if (event.sensor.getType() == Sensor.TYPE_GRAVITY) {
+                gravity = event.values.clone();
             }
 
 //
@@ -804,6 +838,32 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onAccuracyChanged(Sensor sensor, int i) {
 
+        }
+    }
+
+    //칼만필터를 클래스로 선언한다. 여기에 쓰이는 공식은 이미 여러 사이트에 소개되어있다.
+    class KalmanFilter {
+        private float Q = 0.00001f;
+        private float R = 0.001f;
+        private float X = 0, P = 1, K;
+
+        //첫번째값을 입력받아 초기화 한다. 예전값들을 계산해서 현재값에 적용해야 하므로 반드시 하나이상의 값이 필요하므로~
+        KalmanFilter(float initValue) {
+            X = initValue;
+        }
+
+        //예전값들을 공식으로 계산한다
+        private void measurementUpdate(){
+            K = (P + Q) / (P + Q + R);
+            P = R * (P + Q) / (R + P + Q);
+        }
+
+        //현재값을 받아 계산된 공식을 적용하고 반환한다
+        public float update(float measurement){
+            measurementUpdate();
+            X = X + (measurement - X) * K;
+
+            return X;
         }
     }
 }
