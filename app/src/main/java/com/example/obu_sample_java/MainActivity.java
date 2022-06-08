@@ -44,6 +44,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.lang.Integer;
 
+
 public class MainActivity extends AppCompatActivity {
     TextView mTvBluetoothStatus;
     TextView mTvReceiveData;
@@ -52,6 +53,7 @@ public class MainActivity extends AppCompatActivity {
     TextView accLogView;
     TextView btRssi;
     Switch gpsSwitch;
+    Switch refSwitch;
     Button mBtnBluetoothOn;
     Button mBtnBluetoothOff;
     Button mBtnConnect;
@@ -118,7 +120,8 @@ public class MainActivity extends AppCompatActivity {
     private Sensor mAccelometerSensor = null;
     private Sensor mMagneticSensor = null;
     private Sensor mGravitySensor = null;
-    boolean isSensorRunnging = false;
+    boolean isUsingGps = false;
+    boolean isUsingRef = false;
 
     float[] accMat = new float[3];
     float[] magMat = new float[3];
@@ -145,6 +148,7 @@ public class MainActivity extends AppCompatActivity {
         logView = (TextView) findViewById(R.id.logView);
         accLogView = (TextView) findViewById(R.id.accLogView);
         gpsSwitch = (Switch) findViewById(R.id.gpsSwitch);
+        refSwitch = (Switch) findViewById(R.id.refSwitch);
 
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         refMessageFormat = new RefMessage();
@@ -196,7 +200,7 @@ public class MainActivity extends AppCompatActivity {
                     lastLatitude = currentLatitude;
                     lastLongitude = currentLongitude;
 
-                    logView.setText("latitude: " + lat + "\nlongitude: " + lng);
+                    logView.setText("latitude: " + currentLatitude + "\nlongitude: " + currentLongitude);
                 }
                 catch (Exception e) {
                     Toast.makeText(getApplicationContext(), e.toString(), Toast.LENGTH_LONG).show();
@@ -255,12 +259,17 @@ public class MainActivity extends AppCompatActivity {
                 listPairedDevices();
             }
         });
+
+        // GPS 사용 스위치 클릭 이벤트 콜백 등록한다.
         gpsSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                isSensorRunnging = !isChecked;
+                isUsingGps = isChecked;
 
-                if (isSensorRunnging) {
+                // GPS를 사용하지 않을 경우, 센서의 데이터를 사용한다.
+                // 센서의 데이터를 사용하는 경우, 사용할 변수들을 초기화한다.
+                // 센서의 데이터를 사용하는 경우, 가속도, 지자기, 중력 센서 이벤트 콜백을 등록한다.
+                if (!isUsingGps) {
                     currentAccX = 0;
                     currentAccY = 0;
                     currentAccZ = 0;
@@ -280,22 +289,27 @@ public class MainActivity extends AppCompatActivity {
                     mSensorManager.registerListener(mAccLis, mMagneticSensor, 10000);
                     mSensorManager.registerListener(mAccLis, mGravitySensor, 10000);
                 }
+
+                // GPS를 사용하는 경우, 센서의 데이터를 사용하지 않는다.
+                // 센서의 데이터를 사용하지 않는 경우, 센서 이벤트 콜백을 해제한다.
                 else {
                     mSensorManager.unregisterListener(mAccLis);
                 }
             }
         });
+
+        // Ref GPS 사용 스위치 클릭 이벤트 콜백 등록한다.
+        refSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                isUsingRef = isChecked;
+            }
+        });
+
+        // 경고 메시지 전송 버튼 클릭 이벤트 콜백을 등록한다.
         mBtnSendData.setOnClickListener(new Button.OnClickListener() {
             @Override
             public void onClick(View view) {
-//                if (isSensorRunnging == false) {
-//                    isSensorRunnging = true;
-//                    mSensorManager.registerListener(mAccLis, mAccelometerSensor, SensorManager.SENSOR_DELAY_UI);
-//                }
-//                else {
-//                    isSensorRunnging = false;
-//                    mSensorManager.unregisterListener(mAccLis);
-//                }
                 if (mThreadConnectedBluetooth != null) {
 
                     // alert message 생성
@@ -337,6 +351,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
+        // 블루투스 수신 이벤트 콜백을 등록한다.
         mBluetoothHandler = new Handler() {
             public void handleMessage(android.os.Message msg) {
 
@@ -344,7 +360,7 @@ public class MainActivity extends AppCompatActivity {
 
                     //String readMessage = null;
                     try {
-                        // refMessageFormat = (RefMessage) msg.obj;
+                        // 수신한 데이터를 저장하고 unsigned 형으로 변환한다.
                         refMessageFormat.id = Arrays.copyOfRange((byte[]) msg.obj, 0, 4);
                         for (int i = 0; i < 4; i++)
                             refMessageFormat.id[i] = (byte) (refMessageFormat.id[i] & 0xff);
@@ -365,12 +381,14 @@ public class MainActivity extends AppCompatActivity {
                         for (int i = 0; i < 4; i++)
                             refMessageFormat.longitude[i] = (byte) (refMessageFormat.longitude[i] & 0xff);
 
+                        // 저장한 메시지의 데이터를 로그에 출력한다.
                         mTvReceiveData.setText("id: " + new String(refMessageFormat.id) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "type: " + ConvertByteArrayToInt(refMessageFormat.type) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "body_len: " + ConvertByteArrayToInt(refMessageFormat.body_len) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "latitude: " + ConvertByteArrayToInt(refMessageFormat.latitude) + "\n");
                         mTvReceiveData.setText(mTvReceiveData.getText() + "longitude: " + ConvertByteArrayToInt(refMessageFormat.longitude) + "\n");
 
+                        // 메시지의 참조좌표를 전역변수에 저장한다.
                         refLatitude = ConvertByteArrayToInt(refMessageFormat.latitude);
                         refLongitude = ConvertByteArrayToInt(refMessageFormat.longitude);
 
@@ -384,6 +402,11 @@ public class MainActivity extends AppCompatActivity {
         };
     }
 
+    /**
+     * @brief 정수형 데이터를 바이트열 데이터로 변환한다. (32bits)
+     * @param integer 변환할 정수형 데이터
+     * @return 변환한 바이트열 데이터
+     */
     private static byte[] ConvertIntToByteArray(final int integer) {
         ByteBuffer buff = ByteBuffer.allocate(Integer.SIZE / 8);
         buff.clear();
@@ -392,6 +415,11 @@ public class MainActivity extends AppCompatActivity {
         return buff.array();
     }
 
+    /**
+     * @brief 바이트열 데이터를 정수형 데이터로 변환한다. (32bits)
+     * @param bytes 변환할 바이트열 데이터
+     * @return 변환한 정수형 데이터
+     */
     private static int ConvertByteArrayToInt(byte[] bytes) {
         final int size = Integer.SIZE / 8;
         ByteBuffer buff = ByteBuffer.allocate(size);
@@ -409,6 +437,9 @@ public class MainActivity extends AppCompatActivity {
         return buff.getInt();
     }
 
+    /**
+     * @brief 블루투스 디바이스 탐색하여 RSSI를 출력한다.
+     */
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -416,12 +447,23 @@ public class MainActivity extends AppCompatActivity {
             try {
                 String action = intent.getAction();
                 if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+
+                    // RSSI 값을 읽는다.
                     int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+
+                    // 탐색한 디바이스 이름을 읽는다.
                     String name = intent.getStringExtra(BluetoothDevice.EXTRA_NAME);
+
+                    // 문구를 출력할 UI 정보를 가져온다.
                     TextView rssi_msg = (TextView) findViewById(R.id.btRssi);
+
+                    // 이름이 없는 디바이스는 무시한다.
                     if (name == null) {
                         return;
                     }
+
+                    // 원하는 디바이스일 경우, 문구를 출력한다.
+                    // RSSI 값이 -100일 경우, 출력하지 않는다.
                     if (mBluetoothDevice.getName().equals(name) && rssi != -100) {
                         rssi_msg.setText(name + ": " + rssi + "dBm");
                         currentRssi = rssi;
@@ -434,6 +476,9 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    /**
+     * @brief 블루투스를 활성화 했을 때, 문구를 출력한다.
+     */
     void bluetoothOn() {
         if (mBluetoothAdapter == null) {
             Toast.makeText(getApplicationContext(), "블루투스를 지원하지 않는 기기입니다.", Toast.LENGTH_LONG).show();
@@ -449,6 +494,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief 블루투스를 비활성화 했을 때, 문구를 출력한다.
+     */
     void bluetoothOff() {
         if (mBluetoothAdapter.isEnabled()) {
             mBluetoothAdapter.disable();
@@ -459,14 +507,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief 블루투스의 활성화 상태를 출력한다.
+     * @param requestCode 블루투스 모듈 사용 가능 여부 확인 요청
+     * @param resultCode 블루투스 모듈 사용 가능 여부 결과
+     * @param data
+     */
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         switch (requestCode) {
             case BT_REQUEST_ENABLE:
-                if (resultCode == RESULT_OK) { // 블루투스 활성화를 확인을 클릭하였다면
+                // 블루투스 활성화를 확인을 눌렀을 때, active로 설정한다.
+                if (resultCode == RESULT_OK) {
                     Toast.makeText(getApplicationContext(), "블루투스 활성화", Toast.LENGTH_LONG).show();
                     mTvBluetoothStatus.setText("active");
-                } else if (resultCode == RESULT_CANCELED) { // 블루투스 활성화를 취소를 클릭하였다면
+                }
+                // 블루투스 활성화를 취소를 눌렀을 때, inactive로 설정한다.
+                else if (resultCode == RESULT_CANCELED) {
                     Toast.makeText(getApplicationContext(), "취소", Toast.LENGTH_LONG).show();
                     mTvBluetoothStatus.setText("inactive");
                 }
@@ -475,22 +532,36 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
     }
 
+    /**
+     * @brief 블루투스 연결 버튼 클릭 이벤트 콜백
+     * @details 블루투스 연결 버튼을 클릭했을 때, 블루투스 페어링된 디바이스의 목록 다이얼로그를 출력한다.
+     */
     void listPairedDevices() {
+
+        // 블루투스 모듈 사용 가능 여부를 확인한다.
         if (mBluetoothAdapter.isEnabled()) {
 
+            // 블루투스 페어링된 디바이스의 목록을 가져온다.
             mPairedDevices = mBluetoothAdapter.getBondedDevices();
+
+            // 블루투스 페어링된 디바이스가 있을 경우에만 동작한다.
             if (mPairedDevices.size() > 0) {
+
+                // 다이얼로그를 선언한다.
                 AlertDialog.Builder builder = new AlertDialog.Builder(this);
                 builder.setTitle("장치 선택");
 
+                // 다이얼로그에 디바이스 이름을 리스트에 저장한다.
                 mListPairedDevices = new ArrayList<String>();
                 for (BluetoothDevice device : mPairedDevices) {
                     mListPairedDevices.add(device.getName());
                     //mListPairedDevices.add(device.getName() + "\n" + device.getAddress());
                 }
+
                 final CharSequence[] items = mListPairedDevices.toArray(new CharSequence[mListPairedDevices.size()]);
                 mListPairedDevices.toArray(new CharSequence[mListPairedDevices.size()]);
 
+                // 다이얼로그에 다바이스 리스트를 출력하고 클릭 콜백함수를 지정한다.
                 builder.setItems(items, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int item) {
@@ -498,6 +569,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
 
+                // 다이얼로그를 생성하고 출력한다.
                 AlertDialog alert = builder.create();
                 alert.show();
             } else {
@@ -508,29 +580,45 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief 블루투스 디바이스 선택 콜백
+     * @details 불루투스 디바이스를 선택했을 때, 블루투스 연결 및 처리 스레드를 시작한다.
+     * @details 블루투스 디바이스를 선택했을 때, Notification 메시지 전송 스레드를 시작한다.
+     * @details 블루투스 디바이스를 선택했을 때, RSSI 측정 스레드를 시작한다.
+     * @param selectedDeviceName 선택한 블루투스 디바이스 이름
+     */
     void connectSelectedDevice(String selectedDeviceName) {
+
+        // 블루투스 디바이스 이름을 통해 디바이스 정보를 저장한다.
         for (BluetoothDevice tempDevice : mPairedDevices) {
             if (selectedDeviceName.equals(tempDevice.getName())) {
                 mBluetoothDevice = tempDevice;
                 break;
             }
         }
+
         try {
+
+            // 블루투스 디바이스 정보를 통해 블루투스 소켓을 생성하고 연결한다.
             mBluetoothSocket = mBluetoothDevice.createInsecureRfcommSocketToServiceRecord(BT_UUID);
             mBluetoothSocket.connect();
 
+            // 블루투스 연결 및 처리 스레드를 등록하고 시작한다.
             mThreadConnectedBluetooth = new ConnectedBluetoothThread(mBluetoothSocket);
             mThreadConnectedBluetooth.start();
 
+            // 블루투스 수신 세기 측정 스레드를 등록하고 시작한다.
             if (mThreadGetRssi == null) {
                 mThreadGetRssi = new GetRssiThread();
                 mThreadGetRssi.start();
             }
 
+            // Notification 메시지 전송 스레드를 등록하고 시작한다.
             if (mThreadSendNoti == null) {
                 mThreadSendNoti = new SendNotiMessageThread();
                 mThreadSendNoti.start();
             }
+
             mBluetoothHandler.obtainMessage(BT_CONNECTING_STATUS, 1, -1).sendToTarget();
 
         } catch (IOException e) {
@@ -538,6 +626,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief Reference GPS 메시지 클래스
+     */
     private class RefMessage {
         byte[] id;
         byte[] type;
@@ -554,6 +645,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief Notification 메시지 클래스
+     */
     private class NotiMessage {
         byte[] id;
         byte[] type;
@@ -572,6 +666,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief 블루투스의 수신 세기를 측정하는 스레드
+     * @details 디바이스 탐색 기능을 사용하여 RSSI를 측정한다.
+     */
     private class GetRssiThread extends Thread {
         public GetRssiThread() {
             // Register for broadcasts when a device is discovered
@@ -579,6 +677,10 @@ public class MainActivity extends AppCompatActivity {
 
             mBluetoothAdapter.startDiscovery();
         }
+
+        /**
+         * @brief 탐색 시작/종룔를 반복하여 RSSI를 갱신한다.
+         */
         public void run() {
             while (true) {
                 if (mBluetoothAdapter.isDiscovering() == false) {
@@ -588,39 +690,159 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
+    /**
+     * @brief RSU에 Notification 메시지를 전송하는 스레드
+     * @details 일정 주기로 RSU에 블루투스로 Notification 메시지를 전송한다.
+     */
     private class SendNotiMessageThread extends Thread {
         public SendNotiMessageThread() {
             notiMessageFormat = new NotiMessage();
         }
 
+        /**
+         * @brief Notification 메시지 전송 프로세스
+         * @details Notification 메시지 내용을 채우고 전송한다.
+         */
         public void run() {
             while (true) {
+                
+                /* 블루투스 연결이 된 상태에서만 메시지를 전송한다. */
                 if (mThreadConnectedBluetooth != null) {
                     try {
-                        if (isSensorRunnging) {
+
+                        // 메시지 내용 채우기
+                        notiMessageFormat.id = new String("HYES").getBytes();
+                        notiMessageFormat.type = ConvertIntToByteArray(3);
+                        notiMessageFormat.body_len = ConvertIntToByteArray(8);
+                        notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
+
+                        /* 센서를 사용하는 경우, 마지막 GPS 정보에 가속도 센서의 이동거리를 더하여 좌표를 생성한다. */
+                        if (!isUsingGps) {
+
                             // 이동 거리를 gps 이동 좌표로 계산
                             int accGpsPosX = (int)((GPS_MIN_UNIT * (currentPosX / LATITUDE_TO_GPS_CONST)) * 10000000);
                             int accGpsPosY = (int)((GPS_MIN_UNIT * (currentPosY / LONGITUDE_TO_GPS_CONST)) * 10000000);
 
-                            notiMessageFormat.id = new String("HYES").getBytes();
-                            notiMessageFormat.type = ConvertIntToByteArray(3);
-                            notiMessageFormat.body_len = ConvertIntToByteArray(8);
-                            
-                            // 마지막 gps 좌표에 이동 좌표를 더하여 전송
-                            notiMessageFormat.latitude = ConvertIntToByteArray(lastLatitude + accGpsPosX);
-                            notiMessageFormat.longitude = ConvertIntToByteArray(lastLongitude + accGpsPosY);
-                            notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
+                            // 참조 좌표를 사용하지 않는 경우, 마지막 GPS 정보에 가속도 센서의 이동거리를 더하여 좌표를 생성한다.
+                            // 참조 좌표를 이용해서 OBU의 좌표를 보정하지 않는다.
+                            if (!isUsingRef) {
+
+                                // 마지막 gps 좌표에 이동 좌표를 더하여 전송
+                                notiMessageFormat.latitude = ConvertIntToByteArray(lastLatitude + accGpsPosX);
+                                notiMessageFormat.longitude = ConvertIntToByteArray(lastLongitude + accGpsPosY);
+                            }
+
+                            // 참조 좌표를 사용하는 경우, 마지막 GPS 정보에 가속도 센서의 이동거리를 더하여 좌표를 생성한다.
+                            // 참조 좌표를 이용해서 OBU의 좌표를 보정한다.
+                            else {
+                                double a = lastLatitude / 10000000;
+                                double b = lastLongitude / 10000000;
+                                double c = refLatitude / 10000000;
+                                double d = refLongitude / 10000000;
+
+                                double accDoubleX = accGpsPosX / 10000000;
+                                double accDoubleY = accGpsPosY / 10000000;
+
+                                // 마지막 GPS 좌표와 참조 좌표의 직선을 구한다.
+                                // 접하는 두 점
+                                double pointX1, pointX2, pointY1, pointY2;
+
+                                // 원 반지름
+                                double r;
+
+                                // obu, rsu를 지나는 직선의 기울기, 절편
+                                double m, n;
+
+                                // 2차 방정식 계수들
+                                double X, Y;
+                                double A, B, C, D;
+
+                                r = Math.sqrt((accDoubleX * accDoubleX) + (accDoubleY * accDoubleY));
+
+                                if (a != c) {
+
+                                    m = (d - b) / (c - a);
+                                    n = ((b * c) - (a * d)) / (c - a);
+
+                                    A = (m * m) + 1;
+                                    B = ((m * m) - (m * b) - a);
+                                    C = ((a * a) + (b * b) - (r * r) + (n * n) - (2 * n * b));
+                                    D = (B * B) - (A * C);
+
+                                    // 직선과 원이 만나지 않는 경우
+                                    if (D < 0) {
+                                        // nothing
+                                    }
+
+                                    // 직선과 원이 한 점에서 접하는 경우
+                                    if (D == 0) {
+                                        // nothing
+                                    }
+
+                                    // 직선과 원이 두 점에서 접하는 경우
+                                    if (D > 0) {
+                                        X = -(B + Math.sqrt(D)) / A;
+                                        Y = (m * X) + n;
+                                        pointX1 = X;
+                                        pointY1 = Y;
+
+                                        X = -(B - Math.sqrt(D)) / A;
+                                        Y = (m * X) + n;
+                                        pointX2 = X;
+                                        pointY2 = Y;
+
+                                        // 두 점 중에서 rsu(ref)와 가까운 점을 사용한다.
+                                        double dist1 = Math.sqrt(Math.pow(c - pointX1, 2) + Math.pow(d - pointY1, 2));
+                                        double dist2 = Math.sqrt(Math.pow(c - pointX2, 2) + Math.pow(d - pointY2, 2));
+
+                                        notiMessageFormat.latitude = ConvertIntToByteArray(dist1 < dist2 ? (int)(pointX1 * 10000000) : (int)(pointX2 * 10000000));
+                                        notiMessageFormat.longitude = ConvertIntToByteArray(dist1 < dist2 ? (int)(pointY1 * 10000000) : (int)(pointY2 * 10000000));
+
+                                    }
+                                }
+                                // lastLatitude == refLatitude 일 경우, 수직선
+                                else {
+
+                                    // 직선과 원이 만나지 않는 경우
+                                    if (lastLatitude < (lastLatitude - r) || lastLatitude > (lastLatitude + r)) {
+                                        // nothing
+                                    }
+
+                                    // 직선과 원이 한 점에서 접하는 경우
+                                    if (lastLatitude == (lastLatitude - r) || lastLatitude == (lastLongitude + r)) {
+                                        // nothing
+                                    }
+
+                                    // 직선과 원이 두 점에서 접하는 경우
+                                    if (lastLatitude > (lastLongitude - r) && lastLatitude < (lastLongitude + r)) {
+                                        X = lastLatitude;
+                                        Y = lastLongitude + Math.sqrt((r * r) - ((lastLatitude - lastLatitude) * (lastLatitude - lastLatitude)));
+                                        pointX1 = X;
+                                        pointY1 = Y;
+
+                                        X = lastLatitude;
+                                        Y = lastLongitude - Math.sqrt((r * r) - ((lastLatitude - lastLatitude) * (lastLatitude - lastLatitude)));
+                                        pointX2 = X;
+                                        pointY2 = Y;
+
+                                        // 두 점 중에서 rsu(ref)와 가까운 점을 사용한다.
+                                        double dist1 = Math.sqrt(Math.pow(c - pointX1, 2) + Math.pow(d - pointY1, 2));
+                                        double dist2 = Math.sqrt(Math.pow(c - pointX2, 2) + Math.pow(d - pointY2, 2));
+
+                                        notiMessageFormat.latitude = ConvertIntToByteArray(dist1 < dist2 ? (int)(pointX1 * 10000000) : (int)(pointX2 * 10000000));
+                                        notiMessageFormat.longitude = ConvertIntToByteArray(dist1 < dist2 ? (int)(pointY1 * 10000000) : (int)(pointY2 * 10000000));
+                                    }
+                                }
+                            }
                         }
+                        
+                        /* 센서를 사용하지 않는 경우, GPS 좌표를 사용한다. */
                         else {
-                            notiMessageFormat.id = new String("HYES").getBytes();
-                            notiMessageFormat.type = ConvertIntToByteArray(3);
-                            notiMessageFormat.body_len = ConvertIntToByteArray(8);
                             notiMessageFormat.latitude = ConvertIntToByteArray(currentLatitude);
                             notiMessageFormat.longitude = ConvertIntToByteArray(currentLongitude);
-                            notiMessageFormat.rssi = ConvertIntToByteArray(currentRssi);
                         }
-
+                        
+                        // 각 데이터를 바이트열로 변환
                         Byte[] tempByte = new Byte[4];
                         for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.id[i];
                         List<Byte> msgFormat = new ArrayList<Byte>(Arrays.asList(tempByte));
@@ -635,6 +857,7 @@ public class MainActivity extends AppCompatActivity {
                         for (int i = 0; i < 4; i++) tempByte[i] = notiMessageFormat.rssi[i];
                         msgFormat.addAll(new ArrayList<Byte>(Arrays.asList(tempByte)));
 
+                        // 바이트열을 모두 unsigned 형태로 변환한다.
                         for (int i = 0; i < 4; i++) notiMessageFormat.id[i] = (byte) (notiMessageFormat.id[i] & 0xff);
                         for (int i = 0; i < 4; i++) notiMessageFormat.type[i] = (byte) (notiMessageFormat.type[i] & 0xff);
                         for (int i = 0; i < 4; i++) notiMessageFormat.body_len[i] = (byte) (notiMessageFormat.body_len[i] & 0xff);
@@ -642,6 +865,7 @@ public class MainActivity extends AppCompatActivity {
                         for (int i = 0; i < 4; i++) notiMessageFormat.longitude[i] = (byte) (notiMessageFormat.longitude[i] & 0xff);
                         for (int i = 0; i < 4; i++) notiMessageFormat.rssi[i] = (byte) (notiMessageFormat.rssi[i] & 0xff);
 
+                        // 생성한 메시지를 로그에 출력한다.
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
@@ -654,9 +878,12 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
 
+                        // 메시지 전송
                         mThreadConnectedBluetooth.write(msgFormat);
 
+                        // 메시지 전송 주기는 100밀리초이다.
                         Thread.sleep(100);
+
                     } catch (Exception e) {
                         Toast.makeText(getApplicationContext(), e.toString(), Toast.LENGTH_LONG).show();
                     }
@@ -665,6 +892,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief 블루투스 연결 스레드
+     * @details 블루투스 시리얼 스트림을 등록한다.
+     * @details 블루투스 시리얼 스트림 내용을 읽거나 쓴다.
+     */
     private class ConnectedBluetoothThread extends Thread {
         private final BluetoothSocket mmSocket;
         private final InputStream mmInStream;
@@ -722,6 +954,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * @brief 센서 이벤트 콜백
+     * @details 가속도 센서, 중력 센서, 지자기 센서의 값을 읽고 저장한다.
+     */
     private class AccelometerListener implements SensorEventListener {
 
         @Override
@@ -729,8 +965,11 @@ public class MainActivity extends AppCompatActivity {
 
             // 가속도 센서 값 읽기
             if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
+                
+                // 가속도 센서 값을 복사하여 저장한다.
                 accMat = event.values.clone();
 
+                // 가속도 센서 값을 칼만 필터를 통해 정밀도를 올린다.
                 accMat[0] = kalman.update(accMat[0]);
                 accMat[1] = kalman.update(accMat[1]);
                 accMat[2] = kalman.update(accMat[2]);
@@ -783,56 +1022,16 @@ public class MainActivity extends AppCompatActivity {
                 accLogView.setText("earth x: " + String.format("%.4f", currentAccX) + ", y: " + String.format("%.4f", currentAccY) + ", z: " + String.format("%.4f", currentAccZ) + "\n");
                 accLogView.setText(accLogView.getText() + "earth x_pos: " + String.format("%.4f", x_pos) + ", y_pos: " + String.format("%.4f", y_pos));
             }
+            
+            // 지자기 센서의 값을 읽고 복사하여 저장한다.
             else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
                 magMat = event.values.clone();
             }
+            
+            // 중력 센서의 값을 읽고 복사하여 저장한다.
             else if (event.sensor.getType() == Sensor.TYPE_GRAVITY) {
                 gravity = event.values.clone();
             }
-
-//
-//            double accX = event.values[0];
-//            double accY = event.values[1];
-//            double accZ = event.values[2];
-//
-//            // 전역변수에 저장
-//            currentAccX = accX;
-//            currentAccY = accY;
-//            currentAccZ = accZ;
-//
-//            double angleXZ = Math.atan2(accX,  accZ) * 180/Math.PI;
-//            double angleYZ = Math.atan2(accY,  accZ) * 180/Math.PI;
-//
-//            double x_val = 0;
-//            double x_pos = 0;
-//
-//            double y_val = 0;
-//            double y_pos = 0;
-//
-//            double timeSample = 0.1f;
-//
-//            x_val = prevValX + ((0.5 * (currentAccX + prevAccX)) * timeSample);
-//            x_pos = prevPosX + ((0.5 * (x_val + prevValX)) * timeSample);
-//
-//            y_val = prevValY + ((0.5 * (currentAccY + prevAccY)) * timeSample);
-//            y_pos = prevPosY + ((0.5 * (y_val + prevValY)) * timeSample);
-//
-//
-////            mTvSendData.setText(x_val + " = " + prevValX + " + " + "((0.5 * (" + currentAccX + " + " + prevAccX + "))" + timeSample + ")\n\n");
-////
-////            mTvSendData.setText(mTvSendData.getText() + "" + x_pos + " = " + prevPosX + " + " + "((0.5 * (" + x_val + " + " + prevValX + "))" + timeSample + ")");
-//            mTvSendData.setText("x_pos: " + x_pos + ", y_pos: " + y_pos);
-//            prevPosX = x_pos;
-//            prevValX = x_val;
-//
-//            prevPosY = y_pos;
-//            prevValY = y_val;
-//
-//            prevAccX = currentAccX;
-//            prevAccY = currentAccY;
-
-//            accLogView.setText("device x: " + String.format("%.4f", accMat[0]) + ", y: " + String.format("%.4f", accMat[1]) + ", z: " + String.format("%.4f", accMat[2]) + "\n");
-//            accLogView.setText(accLogView.getText() + "earth x: " + String.format("%.4f", earth[0]) + ", y: " + String.format("%.4f", earth[1]) + ", z: " + String.format("%.4f", earth[2]));
         }
 
         @Override
