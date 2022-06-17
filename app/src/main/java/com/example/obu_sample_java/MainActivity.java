@@ -197,8 +197,10 @@ public class MainActivity extends AppCompatActivity {
                     currentLatitude = (int) (lat * 10000000);
                     currentLongitude = (int) (lng * 10000000);
 
-                    lastLatitude = currentLatitude;
-                    lastLongitude = currentLongitude;
+                    if (isUsingGps) {
+                        lastLatitude = currentLatitude;
+                        lastLongitude = currentLongitude;
+                    }
 
                     logView.setText("latitude: " + currentLatitude + "\nlongitude: " + currentLongitude);
                 }
@@ -735,13 +737,14 @@ public class MainActivity extends AppCompatActivity {
                             // 참조 좌표를 사용하는 경우, 마지막 GPS 정보에 가속도 센서의 이동거리를 더하여 좌표를 생성한다.
                             // 참조 좌표를 이용해서 OBU의 좌표를 보정한다.
                             else {
-                                double a = lastLatitude / 10000000;
-                                double b = lastLongitude / 10000000;
-                                double c = refLatitude / 10000000;
-                                double d = refLongitude / 10000000;
 
-                                double accDoubleX = accGpsPosX / 10000000;
-                                double accDoubleY = accGpsPosY / 10000000;
+                                double a = (double)lastLatitude / 10000000;
+                                double b = (double)lastLongitude / 10000000;
+                                double c = (double)refLatitude / 10000000;
+                                double d = (double)refLongitude / 10000000;
+
+                                double accDoubleX = (double)accGpsPosX / 10000000;
+                                double accDoubleY = (double)accGpsPosY / 10000000;
 
                                 // 마지막 GPS 좌표와 참조 좌표의 직선을 구한다.
                                 // 접하는 두 점
@@ -757,7 +760,7 @@ public class MainActivity extends AppCompatActivity {
                                 double X, Y;
                                 double A, B, C, D;
 
-                                r = Math.sqrt((accDoubleX * accDoubleX) + (accDoubleY * accDoubleY));
+                                r = Math.sqrt(Math.pow(accDoubleX, 2) + Math.pow(accDoubleY, 2));
 
                                 if (a != c) {
 
@@ -765,9 +768,10 @@ public class MainActivity extends AppCompatActivity {
                                     n = ((b * c) - (a * d)) / (c - a);
 
                                     A = (m * m) + 1;
-                                    B = ((m * m) - (m * b) - a);
+                                    B = ((m * n) - (m * b) - a);
                                     C = ((a * a) + (b * b) - (r * r) + (n * n) - (2 * n * b));
                                     D = (B * B) - (A * C);
+
 
                                     // 직선과 원이 만나지 않는 경우
                                     if (D < 0) {
@@ -797,7 +801,6 @@ public class MainActivity extends AppCompatActivity {
 
                                         notiMessageFormat.latitude = ConvertIntToByteArray(dist1 < dist2 ? (int)(pointX1 * 10000000) : (int)(pointX2 * 10000000));
                                         notiMessageFormat.longitude = ConvertIntToByteArray(dist1 < dist2 ? (int)(pointY1 * 10000000) : (int)(pointY2 * 10000000));
-
                                     }
                                 }
                                 // lastLatitude == refLatitude 일 경우, 수직선
